@@ -15,6 +15,7 @@ import {
   setBest,
 } from './levels.js';
 import { VERSION } from './version.js';
+import { toggleQuality, qualityPrefs, qualityLabel } from './quality.js';
 
 const els = {
   version: document.getElementById('version'),
@@ -36,6 +37,7 @@ const els = {
   debriefWho: document.getElementById('debriefWho'),
   debriefMeta: document.getElementById('debriefMeta'),
   startBtn: document.getElementById('startBtn'),
+  qualityBtn: document.getElementById('qualityBtn'),
   retryBtn: document.getElementById('retryBtn'),
   nextBtn: document.getElementById('nextBtn'),
   mapBtn: document.getElementById('mapBtn'),
@@ -148,6 +150,53 @@ const HIT_THOUGHTS = [
   '$#@!',
   'watch it!',
 ];
+
+/** Way Back — drifting mind before the fall. No tunnel shade. */
+const RIDE_THOUGHTS = [
+  'Boss said "quick drop". Nothing with him is quick.',
+  'If the boss texts again I\'m throwing the phone in the canal.',
+  'He\'ll still dock me for being three minutes late. Bastard.',
+  'Wonder if she\'s still mad about last night…',
+  'She\'ll be up. She always waits. Feels bad sometimes.',
+  'Tell her I\'m almost home. Almost. Kind of.',
+  'Carb still sticks on the bike. One more weekend. Promise.',
+  'Left the wrench on the kitchen table again. She hates that.',
+  'That old motorbike\'s going to run. Has to. After tonight.',
+  'Maybe take her out on the bike when it\'s fixed. If it ever is.',
+  'Boss. Her. The bike. Same three problems every night.',
+  'Home. Oil on my hands. Her on the couch. That\'s the plan.',
+];
+
+const rideMind = { nextAt: 0, queue: [], i: 0 };
+
+function shuffleCopy(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function resetRideThoughts() {
+  rideMind.queue = shuffleCopy(RIDE_THOUGHTS);
+  rideMind.i = 0;
+  rideMind.nextAt = 110 + Math.random() * 90;
+}
+
+function updateRideThoughts() {
+  if (!level.finale || state.mode !== 'play') return;
+  if (slip.active) return;
+  if (thoughtTimer > 0) return;
+  const killAt = level.slipAt ?? level.goal;
+  // Quiet before the wipeout so NOOOOO owns the beat
+  if (state.distance >= killAt - 90) return;
+  if (state.distance < rideMind.nextAt) return;
+  const line = rideMind.queue[rideMind.i++];
+  if (!line) return;
+  showThought(line, 3.6);
+  rideMind.nextAt = state.distance + 130 + Math.random() * 150;
+}
 
 function showThought(line, dur = 4.2) {
   if (!els.thought || !line) return;
@@ -361,7 +410,7 @@ let clockBumpTimer = 0;
 let bloomKick = 0;
 /** Hit tunnel-vision leftover — don't clear if phone talk still owns the shade */
 let hitTunnelT = 0;
-const slip = { active: false, t: 0 };
+const slip = { active: false, t: 0, phase: 'lurch', cracked: false };
 
 function flashHitTunnel() {
   hitTunnelT = 1.15;
@@ -380,21 +429,24 @@ function beginSlip() {
   if (slip.active || state.mode !== 'play') return;
   slip.active = true;
   slip.t = 0;
+  slip.phase = 'lurch';
+  slip.cracked = false;
   state.mode = 'slip';
   resetCall();
-  player.startTumble();
+  player.startLurch();
   music.stop(false);
-  music.boneCrack();
   els.hud.classList.remove('live');
   els.tunnel?.classList.add('on');
-  els.blood?.classList.add('on');
+  els.blood?.classList.remove('on');
+  showThought('NOOOOO!!!!', 7.5);
   els.status.textContent = '—';
-  state.shake = 1.2;
+  state.shake = 0.75;
 }
 
 function showFinale() {
   slip.active = false;
   state.mode = 'win';
+  clearThought();
   const score = state.distance;
   const best = setBest(level.id, score);
   onLevelWon(level.id);
@@ -424,16 +476,52 @@ function showFinale() {
 function updateSlip(dt) {
   if (!slip.active) return;
   slip.t += dt;
+  updateThought(dt);
+
+  if (slip.phase === 'lurch') {
+    // Uncontrolled weave — player feels it, cannot fight it
+    const steer =
+      Math.sin(slip.t * 4.8) * 1.35 + Math.sin(slip.t * 9.2) * 0.55 + Math.sin(slip.t * 2.1) * 0.4;
+    const result = player.update(dt, { steer, throttle: 0.4, boost: false });
+    state.distance += result.forward * dt;
+    world.update(dt, player, state.distance, clock.elapsedTime);
+    state.shake = 0.55 + Math.abs(Math.sin(slip.t * 7.5)) * 0.55;
+    if (renderer) {
+      renderer.toneMappingExposure = THREE.MathUtils.damp(
+        renderer.toneMappingExposure,
+        0.85,
+        2.5,
+        dt,
+      );
+    }
+    bloomPass.strength.value = 0.22;
+    updateCamera(dt);
+
+    if (slip.t >= 2.65) {
+      slip.phase = 'tumble';
+      player.startTumble();
+      music.boneCrack();
+      els.blood?.classList.add('on');
+      state.shake = 1.35;
+    }
+    return;
+  }
+
+  // Slow tumble → red fade → still
   player.update(dt, { steer: 0, throttle: 0, boost: false });
   world.update(0, player, state.distance, clock.elapsedTime);
-  state.shake = Math.max(0.3, 1.4 - slip.t * 0.35);
+  const tumbleT = slip.t - 2.65;
+  state.shake = Math.max(0.25, 1.35 - tumbleT * 0.22);
   if (renderer) {
-    renderer.toneMappingExposure = Math.max(0.22, 1.05 - slip.t * 0.28);
+    renderer.toneMappingExposure = Math.max(0.18, 1.05 - tumbleT * 0.16);
   }
-  bloomPass.strength.value = 0.15;
+  bloomPass.strength.value = 0.12;
   updateCamera(dt);
-  if (slip.t > 0.35 && slip.t < 0.4) music.boneCrack();
-  if (slip.t > 2.9) showFinale();
+  if (!slip.cracked && tumbleT > 0.85) {
+    slip.cracked = true;
+    music.boneCrack();
+  }
+  if (slip.t > 6.8) showFinale();
 }
 
 function pulseEvent(kind) {
@@ -549,7 +637,7 @@ const rain = createRain(scene);
 rain.setOpacity(level.theme.rainOpacity);
 
 const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
+renderer.setPixelRatio(Math.min(devicePixelRatio, qualityPrefs().dprCap));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -562,13 +650,24 @@ const music = createMusic();
 const renderPipeline = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
 const sceneColor = scenePass.getTextureNode('output');
-let bloomPass = bloom(
-  sceneColor,
-  level.theme.bloom[0],
-  level.theme.bloom[1],
-  level.theme.bloom[2],
-);
+const startBloom = qualityPrefs().bloom(level.theme.bloom);
+let bloomPass = bloom(sceneColor, startBloom[0], startBloom[1], startBloom[2]);
 renderPipeline.outputNode = sceneColor.add(bloomPass);
+
+function applyBloom(themeBloom) {
+  const [s, r, t] = qualityPrefs().bloom(themeBloom);
+  bloomPass.strength.value = s;
+  bloomPass.radius.value = r;
+  bloomPass.threshold.value = t;
+}
+
+function applyGraphicsQuality() {
+  const q = qualityPrefs();
+  renderer.setPixelRatio(Math.min(devicePixelRatio, q.dprCap));
+  rain.applyQuality();
+  applyBloom(level.theme.bloom);
+  if (els.qualityBtn) els.qualityBtn.textContent = qualityLabel();
+}
 
 function applyAtmosphere(lv) {
   scene.background.setHex(lv.theme.bg);
@@ -581,9 +680,7 @@ function applyAtmosphere(lv) {
   fill.intensity = lv.theme.fillInt;
   streetFill.color.setHex(lv.theme.ambient);
   rain.setOpacity(lv.theme.rainOpacity);
-  bloomPass.strength.value = lv.theme.bloom[0];
-  bloomPass.radius.value = lv.theme.bloom[1];
-  bloomPass.threshold.value = lv.theme.bloom[2];
+  applyBloom(lv.theme.bloom);
   music.setDistrict(lv.theme.mode);
 }
 
@@ -659,6 +756,7 @@ function startLevel(id) {
   world.setLevel(level);
   applyAtmosphere(level);
   resetCall();
+  resetRideThoughts();
 
   state.mode = 'play';
   state.time = level.startTime;
@@ -756,6 +854,16 @@ function endRun(won) {
 }
 
 els.startBtn.addEventListener('click', () => startLevel(selectedLevelId));
+els.qualityBtn?.addEventListener('click', () => {
+  toggleQuality();
+  applyGraphicsQuality();
+  // Reseed scenery so neon/towers/windows match new tier
+  if (state.mode === 'title') {
+    world.setLevel(level);
+    applyAtmosphere(level);
+  }
+});
+if (els.qualityBtn) els.qualityBtn.textContent = qualityLabel();
 els.retryBtn.addEventListener('click', () => startLevel(level.id));
 els.nextBtn.addEventListener('click', () => {
   const next = Math.min(level.id + 1, LEVELS.length);
@@ -962,6 +1070,8 @@ async function init() {
         els.status.textContent = 'stalled — hold W to push off';
       }
 
+      updateRideThoughts();
+
       // Always real dt — vans/walkers keep moving when you stall (scroll uses player.speed)
       const hit = world.update(dt, player, state.distance, clock.elapsedTime);
 
@@ -1005,7 +1115,7 @@ async function init() {
       }
       if (bloomKick > 0) {
         bloomKick = Math.max(0, bloomKick - dt * 2.2);
-        const [baseS] = level.theme.bloom;
+        const [baseS] = qualityPrefs().bloom(level.theme.bloom);
         bloomPass.strength.value = baseS + bloomKick;
         renderer.toneMappingExposure = THREE.MathUtils.damp(
           renderer.toneMappingExposure,
@@ -1014,7 +1124,7 @@ async function init() {
           dt,
         );
       } else {
-        bloomPass.strength.value = level.theme.bloom[0];
+        applyBloom(level.theme.bloom);
       }
 
       if (level.finale && state.distance >= (level.slipAt ?? level.goal)) {

@@ -1,14 +1,16 @@
 import * as THREE from 'three/webgpu';
+import { qualityPrefs } from './quality.js';
 
-const COUNT = 900;
+const MAX = 900;
 
 export function createRain(scene) {
   // Short streaks, not starfield dots
-  const positions = new Float32Array(COUNT * 6);
-  const speeds = new Float32Array(COUNT);
-  const bases = new Float32Array(COUNT * 3);
+  const positions = new Float32Array(MAX * 6);
+  const speeds = new Float32Array(MAX);
+  const bases = new Float32Array(MAX * 3);
+  let active = qualityPrefs().rainCount;
 
-  for (let i = 0; i < COUNT; i++) {
+  for (let i = 0; i < MAX; i++) {
     const x = (Math.random() - 0.5) * 36;
     const y = Math.random() * 20;
     const z = -Math.random() * 70;
@@ -27,6 +29,7 @@ export function createRain(scene) {
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setDrawRange(0, active * 2);
 
   const mat = new THREE.LineBasicMaterial({
     color: 0x9eb6d8,
@@ -43,11 +46,18 @@ export function createRain(scene) {
     setOpacity(v) {
       mat.opacity = v;
     },
+    setCount(n) {
+      active = Math.max(50, Math.min(MAX, Math.floor(n)));
+      geo.setDrawRange(0, active * 2);
+    },
+    applyQuality() {
+      this.setCount(qualityPrefs().rainCount);
+    },
     update(dt, origin, speed) {
       const arr = geo.attributes.position.array;
       const wind = 1.2 + speed * 0.08;
 
-      for (let i = 0; i < COUNT; i++) {
+      for (let i = 0; i < active; i++) {
         let x = bases[i * 3];
         let y = bases[i * 3 + 1];
         let z = bases[i * 3 + 2];

@@ -267,6 +267,7 @@ export function createPlayer(scene) {
       api.onCall = false;
       api.scrapes = 0;
       api.tumbling = false;
+      api.lurching = false;
       api.startX = START_X;
       trail.material.opacity = 0;
       group.visible = true;
@@ -296,8 +297,19 @@ export function createPlayer(scene) {
       burstAnger();
     },
 
+    /** Way Back — lose control but still rolling */
+    startLurch() {
+      api.lurching = true;
+      api.tumbling = false;
+      api.stalled = false;
+      api.onCall = false;
+      api.speed = Math.max(api.speed, 12);
+      burstAnger();
+    },
+
     /** Way Back finale — wipeout */
     startTumble() {
+      api.lurching = false;
       api.tumbling = true;
       api.stalled = false;
       api.onCall = false;
@@ -326,17 +338,43 @@ export function createPlayer(scene) {
     },
 
     update(dt, input) {
-      // --- finale tumble ---
+      // --- finale lurch: still rolling, steer is forced by caller ---
+      if (api.lurching) {
+        api.speed = Math.max(9, api.speed - dt * 1.1);
+        const speedNorm = api.speed / BOOST_SPEED;
+        const grip = THREE.MathUtils.lerp(4.5, 7.2, Math.min(1, speedNorm));
+        api.vx += input.steer * grip * dt * 5.5;
+        api.vx *= Math.exp(-5.5 * dt);
+        group.position.x = THREE.MathUtils.clamp(
+          group.position.x + api.vx * dt,
+          -ROAD_HALF,
+          ROAD_HALF,
+        );
+        const steerLean = -api.vx * 0.045;
+        group.rotation.z = THREE.MathUtils.damp(group.rotation.z, steerLean, 4, dt);
+        group.rotation.x = THREE.MathUtils.damp(group.rotation.x, -0.08 + Math.sin(performance.now() * 0.008) * 0.06, 5, dt);
+        body.rotation.z = Math.sin(performance.now() * 0.014) * 0.12;
+        rider.rotation.z = Math.sin(performance.now() * 0.011) * 0.18;
+        const spin = api.speed * dt * 2.2;
+        frontWheel.rotation.z -= spin;
+        rearWheel.rotation.z -= spin;
+        trail.material.opacity = 0.15;
+        headLight.intensity = 4;
+        updateAnger(dt);
+        return { forward: api.speed, boosting: false, stalled: false, lurching: true };
+      }
+
+      // --- finale tumble (slow / heavy) ---
       if (api.tumbling) {
-        group.rotation.z += dt * 5.5;
-        group.rotation.x += dt * 3.2;
-        group.rotation.y += dt * 1.8;
-        group.position.y = Math.max(-0.35, group.position.y - dt * 0.9);
-        group.position.x += Math.sin(performance.now() * 0.02) * dt * 1.2;
-        body.rotation.z += dt * 7;
-        rider.rotation.z += dt * 4;
+        group.rotation.z += dt * 2.1;
+        group.rotation.x += dt * 1.15;
+        group.rotation.y += dt * 0.65;
+        group.position.y = Math.max(-0.4, group.position.y - dt * 0.32);
+        group.position.x += Math.sin(performance.now() * 0.01) * dt * 0.55;
+        body.rotation.z += dt * 2.6;
+        rider.rotation.z += dt * 1.5;
         trail.material.opacity = 0;
-        headLight.intensity = 1.5;
+        headLight.intensity = 1.2;
         updateAnger(dt);
         return { forward: 0, boosting: false, stalled: false, tumbling: true };
       }

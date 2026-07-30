@@ -1,6 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { createSky } from './sky.js';
 import { LEVELS } from './levels.js';
+import { qualityPrefs } from './quality.js';
+
+function neonOk(theme) {
+  return Math.random() < theme.neonChance * qualityPrefs().neonMul;
+}
 
 const SEGMENT = 24;
 const SEGMENTS = 14;
@@ -183,7 +188,7 @@ function buildTerraceHouse(side, theme) {
     );
     shop.position.set(faceX - side * 0.06, 1.15, depthZ * 0.2);
     g.add(shop);
-    if (Math.random() < theme.neonChance) {
+    if (neonOk(theme)) {
       const fascia = new THREE.Mesh(
         new THREE.BoxGeometry(0.1, 0.28, depthZ * 0.5),
         neonMat(neonColor, 2.4),
@@ -418,7 +423,7 @@ function buildDowntownFacade(side, theme) {
     shopWin.position.set(faceX - side * 0.08, 1.4, 0);
     g.add(shopWin);
 
-    if (Math.random() < theme.neonChance) {
+    if (neonOk(theme)) {
       const sign = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.4 + Math.random() * 0.2, depthZ * (0.4 + Math.random() * 0.3)),
         neonMat(neonColor, 3.4),
@@ -428,7 +433,7 @@ function buildDowntownFacade(side, theme) {
     }
   }
 
-  if (Math.random() < theme.neonChance) {
+  if (neonOk(theme)) {
     const tube = new THREE.Mesh(
       new THREE.BoxGeometry(0.1, h * 0.6, 0.1),
       neonMat(pick(theme.neon), 2.8),
@@ -437,11 +442,14 @@ function buildDowntownFacade(side, theme) {
     g.add(tube);
   }
 
-  for (let story = 1; story < stories; story++) {
+  // HIGH: all stories × 3 cols. LOW: cap panes for fill-rate.
+  const qWin = qualityPrefs();
+  const litStories = Math.min(stories, qWin.maxLitStories);
+  const cols = qWin.windowCols;
+  for (let story = 1; story < litStories; story++) {
     const y = shopH + 0.95 + (story - 1) * storyH;
-    const cols = 3;
     for (let c = 0; c < cols; c++) {
-      const z = (c - (cols - 1) / 2) * (depthZ * 0.28);
+      const z = (c - (cols - 1) / 2) * (depthZ * 0.32);
       const frame = new THREE.Mesh(
         new THREE.BoxGeometry(0.1, 1.2, 0.9),
         new THREE.MeshStandardMaterial({ color: 0x12151c, roughness: 0.65 }),
@@ -691,7 +699,7 @@ export function createWorld(scene) {
     g.add(bulb);
 
     const stride =
-      theme.mode === 'wayback'
+      (theme.mode === 'wayback'
         ? 4
         : theme.mode === 'downtown'
           ? 3
@@ -699,7 +707,7 @@ export function createWorld(scene) {
             ? 3
             : theme.mode === 'borough'
               ? 3
-              : 4;
+              : 4) + qualityPrefs().lampStrideExtra;
     if (index % stride === 0) {
       const light = new THREE.PointLight(
         theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
@@ -721,6 +729,32 @@ export function createWorld(scene) {
     }
 
     g.position.set(side * (ROAD_W / 2 + 0.55), 0, z);
+    props.add(g);
+    pool.lamps.push({ group: g, bulb });
+  }
+
+  /** Low sidewalk bollard — Old Town only, sparse warm pools */
+  function spawnSidewalkLight(z, side) {
+    const g = new THREE.Group();
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.07, 0.7, 6),
+      poleMat,
+    );
+    stem.position.y = 0.35;
+    g.add(stem);
+    const bulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 8, 8),
+      neonMat(0xffb070, 3.4),
+    );
+    bulb.position.y = 0.78;
+    g.add(bulb);
+    // Occasional tiny PointLight — short range, cheap
+    if (Math.random() < qualityPrefs().sidewalkLightChance) {
+      const light = new THREE.PointLight(0xffa050, 2.0, 4.5, 2);
+      light.position.y = 0.78;
+      g.add(light);
+    }
+    g.position.set(side * (ROAD_W / 2 + 1.4), 0, z);
     props.add(g);
     pool.lamps.push({ group: g, bulb });
   }
@@ -768,7 +802,7 @@ export function createWorld(scene) {
     props.add(facade);
     pool.buildings.push(facade);
 
-    if (Math.random() < theme.towerChance) {
+    if (Math.random() < theme.towerChance * qualityPrefs().towerMul) {
       const tower = buildBackTower(side, theme);
       tower.position.set(
         side * (ROAD_W / 2 + (theme.mode === 'suburb' ? 10 : theme.mode === 'oldtown' ? 6 : 8) + Math.random() * 6),
@@ -1114,11 +1148,13 @@ export function createWorld(scene) {
         if (Math.random() < 0.85) spawnBuilding(z - spacing * 0.18, -1);
         if (Math.random() < 0.85) spawnBuilding(z - spacing * 0.55, 1);
         if (Math.random() < 0.5) spawnBuilding(z - spacing * 0.7, -1);
+        // Very few low sidewalk bollards
+        if (i % 7 === 0) spawnSidewalkLight(z - 0.8, i % 2 === 0 ? -1 : 1);
       } else {
         if (Math.random() < theme.denseness) spawnBuilding(z, -1);
         if (Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.45, 1);
 
-        if (theme.mode === 'downtown') {
+        if (theme.mode === 'downtown' && qualityPrefs().denseFacades) {
           if (i % 2 === 0 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.25, -1);
           if (i % 2 === 1 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.7, 1);
         } else if (theme.mode === 'suburb') {
@@ -1328,7 +1364,9 @@ export function createWorld(scene) {
       const move = player.speed * dt;
 
       if (theme.mode === 'wayback' && level.goal) {
-        sky.setMoonRise(distance / level.goal);
+        // Pace moon to the real end (slip), not the fake far goal
+        const riseFor = level.slipAt || level.goal;
+        sky.setMoonRise(distance / (riseFor * 2.15));
       }
       sky.update(time ?? performance.now() * 0.001, player.group.position);
 
