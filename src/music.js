@@ -1,7 +1,92 @@
 /**
- * Procedural cyberpunk score — Web Audio only, no files.
- * Dark pad + sub pulse + wet arpeggio + rain hiss.
+ * Procedural score — Web Audio only, no files.
+ * Per-district themes; pace climbs suburbs → old town.
  */
+
+/** @typedef {'suburb' | 'borough' | 'downtown' | 'oldtown'} DistrictMode */
+
+const DISTRICTS = {
+  suburb: {
+    bpmBase: 66,
+    bpmDrive: 12,
+    root: 36.71, // D
+    padSemis: [0, 7, 12, 16], // airy major-ish
+    bassLine: [0, 0, 5, 3],
+    arpSparse: [0, , 7, , 12, , 5, ],
+    arpBusy: [0, 5, 7, 12, 10, 7, 5, 0],
+    padCutoff: 260,
+    arpWave: 'sine',
+    delayTime: 0.36,
+    delayFb: 0.32,
+    rainTone: 1100,
+    arpGain: 0.04,
+    padGain: 0.08,
+  },
+  borough: {
+    bpmBase: 84,
+    bpmDrive: 14,
+    root: 38.89, // Eb
+    padSemis: [0, 3, 7, 12], // minor warmth
+    bassLine: [0, 0, -5, 3],
+    arpSparse: [0, , 7, , 12, , 10, ],
+    arpBusy: [0, 7, 12, 10, 15, 12, 7, 3],
+    padCutoff: 340,
+    arpWave: 'triangle',
+    delayTime: 0.28,
+    delayFb: 0.38,
+    rainTone: 1500,
+    arpGain: 0.055,
+    padGain: 0.07,
+  },
+  downtown: {
+    bpmBase: 104,
+    bpmDrive: 18,
+    root: 41.2, // E
+    padSemis: [0, 7, 12, 19], // neon fifths
+    bassLine: [0, 7, 0, -2],
+    arpSparse: [0, 7, 12, , 15, 12, 7, ],
+    arpBusy: [0, 7, 12, 15, 19, 15, 12, 7],
+    padCutoff: 480,
+    arpWave: 'square',
+    delayTime: 0.22,
+    delayFb: 0.42,
+    rainTone: 2000,
+    arpGain: 0.07,
+    padGain: 0.06,
+  },
+  oldtown: {
+    bpmBase: 122,
+    bpmDrive: 20,
+    root: 34.65, // C#
+    padSemis: [0, 3, 6, 11], // tense gothic
+    bassLine: [0, -2, -5, 3],
+    arpSparse: [0, 3, , 7, 11, , 6, ],
+    arpBusy: [0, 3, 6, 11, 14, 11, 6, 3],
+    padCutoff: 300,
+    arpWave: 'sawtooth',
+    delayTime: 0.18,
+    delayFb: 0.48,
+    rainTone: 900,
+    arpGain: 0.065,
+    padGain: 0.075,
+  },
+  wayback: {
+    bpmBase: 54,
+    bpmDrive: 6,
+    root: 32.7, // C
+    padSemis: [0, 5, 9, 16], // open calm
+    bassLine: [0, 0, 5, 0],
+    arpSparse: [0, , 5, , 12, , 9, ],
+    arpBusy: [0, 5, 9, 12, 16, 12, 9, 5],
+    padCutoff: 220,
+    arpWave: 'sine',
+    delayTime: 0.42,
+    delayFb: 0.28,
+    rainTone: 800,
+    arpGain: 0.03,
+    padGain: 0.1,
+  },
+};
 
 export function createMusic() {
   let ctx = null;
@@ -13,8 +98,11 @@ export function createMusic() {
   let timers = [];
   let ringTimer = null;
   let talkNodes = null;
+  let district = DISTRICTS.suburb;
 
-  const ROOT = 36.71; // D1-ish for sub
+  function rootHz() {
+    return district.root;
+  }
 
   function ensure() {
     if (ctx) return;
@@ -74,16 +162,12 @@ export function createMusic() {
     padLfo.start();
 
     const padOscs = [];
-    for (const [semi, detune] of [
-      [0, -7],
-      [7, 5],
-      [12, -3],
-      [15, 4],
-    ]) {
+    const padDets = [-7, 5, -3, 4];
+    for (let i = 0; i < 4; i++) {
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
-      o.frequency.value = ROOT * Math.pow(2, (12 + semi) / 12);
-      o.detune.value = detune;
+      o.frequency.value = district.root * Math.pow(2, (12 + district.padSemis[i]) / 12);
+      o.detune.value = padDets[i];
       const g = ctx.createGain();
       g.gain.value = 0.22;
       o.connect(g);
@@ -104,13 +188,13 @@ export function createMusic() {
 
     const bass = ctx.createOscillator();
     bass.type = 'sine';
-    bass.frequency.value = ROOT;
+    bass.frequency.value = district.root;
     bass.connect(bassFilter);
     bass.start();
 
     // --- arp voice bus ---
     const arpGain = ctx.createGain();
-    arpGain.gain.value = 0.055;
+    arpGain.gain.value = district.arpGain;
     arpGain.connect(comp);
 
     const arpFilter = ctx.createBiquadFilter();
@@ -120,9 +204,9 @@ export function createMusic() {
     arpFilter.connect(arpGain);
 
     const delay = ctx.createDelay(1);
-    delay.delayTime.value = 0.28;
+    delay.delayTime.value = district.delayTime;
     const delayFb = ctx.createGain();
-    delayFb.gain.value = 0.38;
+    delayFb.gain.value = district.delayFb;
     const delayWet = ctx.createGain();
     delayWet.gain.value = 0.35;
     arpFilter.connect(delay);
@@ -143,20 +227,43 @@ export function createMusic() {
       arpGain,
       arpFilter,
       delay,
+      delayFb,
       padOscs,
     };
+  }
+
+  function applyDistrictTuning() {
+    if (!ctx || !nodes) return;
+    const t = ctx.currentTime;
+    const r = rootHz();
+    for (let i = 0; i < nodes.padOscs.length; i++) {
+      const semi = district.padSemis[i] ?? 0;
+      nodes.padOscs[i].frequency.setTargetAtTime(
+        r * Math.pow(2, (12 + semi) / 12),
+        t,
+        0.2,
+      );
+    }
+    nodes.bass.frequency.setTargetAtTime(r, t, 0.15);
+    nodes.delay.delayTime.setTargetAtTime(district.delayTime, t, 0.2);
+    nodes.delayFb.gain.setTargetAtTime(district.delayFb, t, 0.2);
+    nodes.padGain.gain.setTargetAtTime(district.padGain, t, 0.25);
+    nodes.arpGain.gain.setTargetAtTime(district.arpGain, t, 0.25);
+    nodes.padFilter.frequency.setTargetAtTime(district.padCutoff, t, 0.3);
+    nodes.rainFilter.frequency.setTargetAtTime(district.rainTone, t, 0.3);
   }
 
   function beepArp(semi, when, dur = 0.12) {
     if (!ctx || muted) return;
     const o = ctx.createOscillator();
-    o.type = 'triangle';
-    const freq = ROOT * Math.pow(2, (24 + semi) / 12);
+    o.type = district.arpWave || 'triangle';
+    const freq = rootHz() * Math.pow(2, (24 + semi) / 12);
     o.frequency.value = freq;
 
     const g = ctx.createGain();
+    const peak = district.arpWave === 'square' || district.arpWave === 'sawtooth' ? 0.12 : 0.18;
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.exponentialRampToValueAtTime(0.18, when + 0.02);
+    g.gain.exponentialRampToValueAtTime(peak, when + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
 
     o.connect(g);
@@ -168,42 +275,46 @@ export function createMusic() {
   function schedulePulse() {
     if (!running || !ctx) return;
     const t = ctx.currentTime;
-    const bpm = 72 + intensity * 16;
+    const bpm = district.bpmBase + intensity * district.bpmDrive;
     const beat = 60 / bpm;
 
-    // bass pump
-    const peak = 0.14 + intensity * 0.1;
+    // bass pump — heavier in later districts
+    const peak = 0.12 + intensity * 0.1 + (district.bpmBase - 66) * 0.0004;
     nodes.bassGain.gain.cancelScheduledValues(t);
     nodes.bassGain.gain.setValueAtTime(0.001, t);
-    nodes.bassGain.gain.exponentialRampToValueAtTime(peak, t + 0.04);
-    nodes.bassGain.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.85);
+    nodes.bassGain.gain.exponentialRampToValueAtTime(peak, t + 0.03);
+    nodes.bassGain.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.8);
 
-    // move bass note every 4 beats
     const step = Math.floor(t / (beat * 4)) % 4;
-    const bassSemi = [0, 0, -5, 3][step];
+    const bassSemi = district.bassLine[step] ?? 0;
     nodes.bass.frequency.setTargetAtTime(
-      ROOT * Math.pow(2, bassSemi / 12),
+      rootHz() * Math.pow(2, bassSemi / 12),
       t,
-      0.05,
+      0.04,
     );
 
-    // arp pattern — sparse, rainy
-    const pattern = intensity > 0.55
-      ? [0, 7, 12, 10, 15, 12, 7, 3]
-      : [0, , 7, , 12, , 10, ];
+    const pattern = intensity > 0.5 ? district.arpBusy : district.arpSparse;
+    const density = 0.78 + intensity * 0.15 + (district.bpmBase - 66) * 0.001;
     for (let i = 0; i < 8; i++) {
       const n = pattern[i];
       if (n === undefined) continue;
-      if (Math.random() > 0.85 + intensity * 0.1) continue;
-      beepArp(n, t + i * (beat / 2), 0.1 + Math.random() * 0.06);
+      if (Math.random() > density) continue;
+      beepArp(n, t + i * (beat / 2), 0.08 + Math.random() * 0.05);
     }
 
-    // filter breathe
-    const target = 900 + intensity * 900 + Math.sin(t * 0.4) * 120;
-    nodes.arpFilter.frequency.setTargetAtTime(target, t, 0.2);
-    nodes.padFilter.frequency.setTargetAtTime(320 + intensity * 280, t, 0.4);
-    nodes.rainFilter.frequency.setTargetAtTime(1400 + intensity * 800, t, 0.5);
-    nodes.rainGain.gain.setTargetAtTime(0.035 + intensity * 0.025, t, 0.3);
+    const arpOpen = 700 + intensity * 1000 + Math.sin(t * 0.4) * 100 + (district.bpmBase - 66) * 4;
+    nodes.arpFilter.frequency.setTargetAtTime(arpOpen, t, 0.15);
+    nodes.padFilter.frequency.setTargetAtTime(
+      district.padCutoff + intensity * 220,
+      t,
+      0.35,
+    );
+    nodes.rainFilter.frequency.setTargetAtTime(
+      district.rainTone + intensity * 600,
+      t,
+      0.4,
+    );
+    nodes.rainGain.gain.setTargetAtTime(0.03 + intensity * 0.03, t, 0.3);
 
     const id = setTimeout(schedulePulse, beat * 1000);
     timers.push(id);
@@ -218,8 +329,16 @@ export function createMusic() {
   }
 
   return {
+    /** Switch district score — pace + color. Call before / with start(). */
+    setDistrict(mode) {
+      district = DISTRICTS[mode] || DISTRICTS.suburb;
+      ensure();
+      applyDistrictTuning();
+    },
+
     async start() {
       ensure();
+      applyDistrictTuning();
       if (ctx.state === 'suspended') await ctx.resume();
       if (running) {
         fadeMaster(muted ? 0 : 0.55, 0.6);
@@ -285,6 +404,61 @@ export function createMusic() {
       o.stop(t + 1);
     },
 
+    /** Wet crack / bone snaps — way back finale */
+    boneCrack() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      const n = Math.floor(ctx.sampleRate * 0.12);
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) {
+        const env = Math.exp(-i / (n * 0.12));
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+      // Layered dry snaps
+      for (const [delay, rate, vol] of [
+        [0, 1.0, 0.7],
+        [0.09, 1.35, 0.55],
+        [0.18, 0.7, 0.65],
+        [0.32, 1.8, 0.4],
+        [0.55, 0.55, 0.5],
+        [0.85, 1.1, 0.35],
+      ]) {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = rate;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = 800 + Math.random() * 2200;
+        bp.Q.value = 2.5;
+        const g = ctx.createGain();
+        const when = t + delay;
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(vol, when + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + 0.14);
+        src.connect(bp);
+        bp.connect(g);
+        g.connect(nodes.comp);
+        src.start(when);
+        src.stop(when + 0.2);
+      }
+      // Low body thud
+      const thud = ctx.createOscillator();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(90, t);
+      thud.frequency.exponentialRampToValueAtTime(28, t + 0.5);
+      const tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.0001, t);
+      tg.gain.exponentialRampToValueAtTime(0.55, t + 0.02);
+      tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      thud.connect(tg);
+      tg.connect(nodes.comp);
+      thud.start(t);
+      thud.stop(t + 0.75);
+    },
+
     /** Warm chime — coffee tip */
     pickup() {
       if (muted) return;
@@ -294,7 +468,7 @@ export function createMusic() {
       for (const [i, semi] of [12, 19, 24].entries()) {
         const o = ctx.createOscillator();
         o.type = 'sine';
-        o.frequency.value = ROOT * Math.pow(2, (24 + semi) / 12);
+        o.frequency.value = rootHz() * Math.pow(2, (24 + semi) / 12);
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t + i * 0.05);
         g.gain.exponentialRampToValueAtTime(0.16, t + i * 0.05 + 0.02);
@@ -714,8 +888,8 @@ export function createMusic() {
       // Restore score after talk duck
       if (ctx && nodes) {
         const t = ctx.currentTime;
-        if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.07, t, 0.12);
-        if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.055, t, 0.12);
+        if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(district.padGain, t, 0.12);
+        if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(district.arpGain, t, 0.12);
         if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.045, t, 0.15);
       }
     },

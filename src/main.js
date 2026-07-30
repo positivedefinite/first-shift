@@ -22,6 +22,8 @@ const els = {
   endVersion: document.getElementById('endVersion'),
   fps: document.getElementById('fps'),
   tunnel: document.getElementById('tunnel'),
+  blood: document.getElementById('blood'),
+  thought: document.getElementById('thought'),
   overlay: document.getElementById('overlay'),
   end: document.getElementById('end'),
   endEyebrow: document.getElementById('endEyebrow'),
@@ -78,6 +80,8 @@ const CALLERS = {
     name: 'girlfriend',
     statusWho: 'GF',
     voice: 'normal',
+    callAt: 0.5,
+    thought: "She loves me, but she's too much at times...",
     texts: [
       'ok cool. ignore me then.',
       'wow. the bike. fine.',
@@ -89,9 +93,11 @@ const CALLERS = {
   downtown: {
     id: 'boss',
     short: 'BOSS',
-    name: 'your boss',
+    name: 'boss',
     statusWho: 'BOSS',
     voice: 'boss',
+    callAt: 0.5,
+    thought: 'This fatass obviously never rode a bike...',
     texts: [
       'Answer next time. Clock is watching.',
       'That parcel pays your rent. Priorities.',
@@ -106,23 +112,66 @@ const CALLERS = {
     name: 'unknown number',
     statusWho: 'UNKNOWN',
     voice: 'weird',
+    callAt: 0.3,
+    thought: "can't make any sense of what he's saying, something about going back?",
     texts: [
-      'we heard you pass the gate',
-      'leave it. leave it. leave it.',
-      'the lane already has your name',
-      'do not look up when the bells stop',
-      '………',
+      'still time to turn back.',
+      'turn around. there is still time.',
+      'the span waits. go back while you can.',
+      'you can still reverse. do it.',
     ],
   },
 };
 
-/** Incoming call — borough GF / downtown boss at mid-run */
+/** Incoming call — borough GF / downtown boss / oldtown unknown */
 const call = {
   phase: 'idle', // idle | ring | talk | sulk | text | done
   timer: 0,
   fired: false,
   who: null,
 };
+
+/** Old Town mid-late boss SMS (+time) — separate from unknown call */
+const bossPing = { fired: false };
+
+let thoughtTimer = 0;
+
+const HIT_THOUGHTS = [
+  'ugh',
+  'arrr',
+  '!@#%&!!!',
+  'ow—',
+  'come on',
+  'seriously?!',
+  'not now',
+  'aaagh',
+  '$#@!',
+  'watch it!',
+];
+
+function showThought(line, dur = 4.2) {
+  if (!els.thought || !line) return;
+  els.thought.textContent = line;
+  els.thought.classList.add('on');
+  thoughtTimer = dur;
+}
+
+function showHitThought() {
+  const line = HIT_THOUGHTS[Math.floor(Math.random() * HIT_THOUGHTS.length)];
+  showThought(line, 1.35);
+}
+
+function clearThought() {
+  thoughtTimer = 0;
+  els.thought?.classList.remove('on');
+  if (els.thought) els.thought.textContent = '';
+}
+
+function updateThought(dt) {
+  if (thoughtTimer <= 0) return;
+  thoughtTimer -= dt;
+  if (thoughtTimer <= 0) clearThought();
+}
 
 function callerForLevel(lv) {
   return CALLERS[lv.key] || null;
@@ -147,9 +196,12 @@ function resetCall() {
   call.timer = 0;
   call.fired = false;
   call.who = null;
+  bossPing.fired = false;
   player.onCall = false;
   music.stopRingtone();
   music.stopTalk();
+  clearThought();
+  hitTunnelT = 0;
   els.tunnel?.classList.remove('on');
   els.minimapWrap?.classList.remove('phone-busy');
   els.phoneCall?.classList.add('hidden');
@@ -192,6 +244,7 @@ function acceptCall() {
   music.stopRingtone();
   music.startTalk(call.who?.voice || 'normal');
   els.tunnel?.classList.add('on');
+  if (call.who?.thought) showThought(call.who.thought, 4.5);
 }
 
 function dismissCall() {
@@ -213,11 +266,32 @@ function showAngryText() {
   const line = texts[Math.floor(Math.random() * texts.length)];
   els.textBody.textContent = line;
   els.textFrom.textContent = who?.short || '?';
+  els.phoneText.classList.toggle('boss-text', who?.id === 'boss');
+  els.phoneText.classList.toggle('unknown-text', who?.id === 'unknown');
   els.minimapWrap.classList.add('phone-busy');
   els.phoneText.classList.remove('hidden');
   els.phoneCall.classList.add('hidden');
   els.status.textContent = `new message — ${who?.statusWho || '??'}`;
   music.textBlip();
+}
+
+/** Old Town — boss SMS at 75%, grants +12s */
+function showBossTimeText() {
+  els.textFrom.textContent = 'BOSS';
+  els.textBody.textContent = "client called, there's still time!";
+  els.phoneText.classList.add('boss-text');
+  els.phoneText.classList.remove('unknown-text');
+  els.minimapWrap.classList.add('phone-busy');
+  els.phoneText.classList.remove('hidden');
+  els.phoneCall.classList.add('hidden');
+  els.status.textContent = 'new message — BOSS · +12s';
+  state.time += 12;
+  music.textBlip();
+  pulseEvent('tip');
+  // Reuse text phase so it auto-clears
+  call.phase = 'text';
+  call.timer = 4.5;
+  call.who = CALLERS.downtown;
 }
 
 function endCallUi() {
@@ -226,7 +300,8 @@ function endCallUi() {
   player.onCall = false;
   music.stopTalk();
   music.stopRingtone();
-  els.tunnel?.classList.remove('on');
+  // Keep shade if a recent bump still owns it
+  if (hitTunnelT <= 0) els.tunnel?.classList.remove('on');
   els.minimapWrap.classList.remove('phone-busy');
   els.phoneCall.classList.add('hidden');
   els.phoneCall.classList.remove('ringing');
@@ -237,10 +312,23 @@ function endCallUi() {
 function updateCall(dt) {
   if (state.mode !== 'play') return;
 
-  // Trigger once past halfway when this district has a caller
-  if (!call.fired && state.distance >= level.goal * 0.5) {
-    const who = callerForLevel(level);
-    if (who) beginRing(who);
+  updateThought(dt);
+
+  const who = callerForLevel(level);
+  const callAt = who?.callAt ?? 0.5;
+  if (!call.fired && who && state.distance >= level.goal * callAt) {
+    beginRing(who);
+  }
+
+  // Old Town: boss ping at 75% once the unknown call is clear
+  if (
+    level.key === 'oldtown' &&
+    !bossPing.fired &&
+    state.distance >= level.goal * 0.75 &&
+    (call.phase === 'idle' || call.phase === 'done')
+  ) {
+    bossPing.fired = true;
+    showBossTimeText();
   }
 
   if (call.phase === 'idle' || call.phase === 'done') return;
@@ -267,10 +355,86 @@ function updateCall(dt) {
 }
 
 /** Peak possible speed (boost × handling) — meter full scale */
-const SPEED_CEIL = 26 * 1.25;
+const SPEED_CEIL = 26 * 1.38;
 
 let clockBumpTimer = 0;
 let bloomKick = 0;
+/** Hit tunnel-vision leftover — don't clear if phone talk still owns the shade */
+let hitTunnelT = 0;
+const slip = { active: false, t: 0 };
+
+function flashHitTunnel() {
+  hitTunnelT = 1.15;
+  els.tunnel?.classList.add('on');
+}
+
+function updateHitTunnel(dt) {
+  if (hitTunnelT <= 0) return;
+  hitTunnelT = Math.max(0, hitTunnelT - dt);
+  if (hitTunnelT <= 0 && call.phase !== 'talk' && !slip.active) {
+    els.tunnel?.classList.remove('on');
+  }
+}
+
+function beginSlip() {
+  if (slip.active || state.mode !== 'play') return;
+  slip.active = true;
+  slip.t = 0;
+  state.mode = 'slip';
+  resetCall();
+  player.startTumble();
+  music.stop(false);
+  music.boneCrack();
+  els.hud.classList.remove('live');
+  els.tunnel?.classList.add('on');
+  els.blood?.classList.add('on');
+  els.status.textContent = '—';
+  state.shake = 1.2;
+}
+
+function showFinale() {
+  slip.active = false;
+  state.mode = 'win';
+  const score = state.distance;
+  const best = setBest(level.id, score);
+  onLevelWon(level.id);
+
+  els.blood?.classList.remove('on');
+  els.tunnel?.classList.remove('on');
+  els.end.classList.remove('hidden');
+  els.end.classList.add('win-debrief', 'finale');
+  els.debrief.classList.remove('hidden');
+  els.endEyebrow.textContent = 'end of the road';
+  els.endTitle.textContent = 'THIS NIGHT';
+  els.endLead.textContent = 'did not go as you planned.';
+
+  els.debriefImg.src = level.debriefPhoto;
+  els.debriefImg.alt = 'Aftermath still';
+  els.debriefStamp.textContent = `STILL · ${level.name} · ${Math.floor(score)}m`;
+  els.debriefLine.textContent = `“${level.debriefQuote}”`;
+  els.debriefWho.textContent = '— the span';
+  els.debriefMeta.textContent = 'no next district · the moon kept rising without you';
+
+  els.nextBtn.classList.add('hidden', 'ghost');
+  els.retryBtn.classList.remove('ghost');
+  els.retryBtn.textContent = 'RIDE AGAIN';
+  els.best.textContent = best > 0 ? `best ${Math.floor(best)}m` : '';
+}
+
+function updateSlip(dt) {
+  if (!slip.active) return;
+  slip.t += dt;
+  player.update(dt, { steer: 0, throttle: 0, boost: false });
+  world.update(0, player, state.distance, clock.elapsedTime);
+  state.shake = Math.max(0.3, 1.4 - slip.t * 0.35);
+  if (renderer) {
+    renderer.toneMappingExposure = Math.max(0.22, 1.05 - slip.t * 0.28);
+  }
+  bloomPass.strength.value = 0.15;
+  updateCamera(dt);
+  if (slip.t > 0.35 && slip.t < 0.4) music.boneCrack();
+  if (slip.t > 2.9) showFinale();
+}
 
 function pulseEvent(kind) {
   // kind: 'tip' | 'hit' — SFX + light HUD, no center toast
@@ -420,6 +584,7 @@ function applyAtmosphere(lv) {
   bloomPass.strength.value = lv.theme.bloom[0];
   bloomPass.radius.value = lv.theme.bloom[1];
   bloomPass.threshold.value = lv.theme.bloom[2];
+  music.setDistrict(lv.theme.mode);
 }
 
 function fitCardNames() {
@@ -471,6 +636,10 @@ function renderLevelGrid() {
 }
 
 function showMap() {
+  slip.active = false;
+  els.blood?.classList.remove('on');
+  els.tunnel?.classList.remove('on');
+  els.end.classList.remove('finale');
   state.mode = 'title';
   resetCall();
   els.end.classList.add('hidden');
@@ -508,19 +677,26 @@ function startLevel(id) {
   camera.lookAt(sx * 0.85, 1.2, -7);
   state.shake = 0;
 
+  slip.active = false;
+  els.blood?.classList.remove('on');
+  els.tunnel?.classList.remove('on');
   els.overlay.classList.add('hidden');
   els.end.classList.add('hidden');
-  els.end.classList.remove('win-debrief');
+  els.end.classList.remove('win-debrief', 'finale');
   els.debrief.classList.add('hidden');
   els.nextBtn.classList.add('hidden');
   els.retryBtn.textContent = 'TRY AGAIN';
   els.hud.classList.add('live');
   els.levelTag.textContent = `L${level.id} · ${level.name}`;
-  els.status.textContent = 'hold W to pedal · coast = stop · M mute';
+  els.status.textContent = level.finale
+    ? 'clear sky · hold W · the city is behind you'
+    : 'hold W to pedal · coast = stop · M mute';
   els.clock.classList.remove('urgent');
   const best = getBest(level.id);
   els.best.textContent = best > 0 ? `best ${Math.floor(best)}m` : '';
+  music.setDistrict(level.theme.mode);
   music.start();
+  if (renderer) renderer.toneMappingExposure = 1.05;
 }
 
 function endRun(won) {
@@ -539,6 +715,7 @@ function endRun(won) {
     const hasNext = level.id < LEVELS.length;
 
     els.end.classList.add('win-debrief');
+    els.end.classList.remove('finale');
     els.debrief.classList.remove('hidden');
     els.endEyebrow.textContent = 'delivery logged';
     els.endTitle.textContent = level.subtitle.toUpperCase();
@@ -566,7 +743,7 @@ function endRun(won) {
   } else {
     music.loseSting();
     music.stop(true);
-    els.end.classList.remove('win-debrief');
+    els.end.classList.remove('win-debrief', 'finale');
     els.debrief.classList.add('hidden');
     els.endEyebrow.textContent = 'clock wins';
     els.endTitle.textContent = 'LATE';
@@ -619,7 +796,11 @@ addEventListener('keydown', (e) => {
   }
   if (
     state.mode === 'title' &&
-    (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4')
+    (e.code === 'Digit1' ||
+      e.code === 'Digit2' ||
+      e.code === 'Digit3' ||
+      e.code === 'Digit4' ||
+      e.code === 'Digit5')
   ) {
     const id = Number(e.code.replace('Digit', ''));
     if (id <= getUnlocked()) {
@@ -760,7 +941,9 @@ async function init() {
     updateFps(rawDt);
     const dt = Math.min(rawDt, 0.05);
 
-    if (state.mode === 'play') {
+    if (state.mode === 'slip') {
+      updateSlip(dt);
+    } else if (state.mode === 'play') {
       if (inputLock > 0) inputLock = Math.max(0, inputLock - dt);
       const input = readInput();
       const result = player.update(dt, input);
@@ -785,6 +968,8 @@ async function init() {
       if (!result.stalled && hit && hit.type === 'crash') {
         state.shake = 0.85 + Math.min(0.4, (hit.bumps - 1) * 0.15);
         player.punish();
+        flashHitTunnel();
+        showHitThought();
         const n = player.scrapes;
         const tax = Math.round((1 - player.scrapeMult()) * 100);
         els.status.textContent =
@@ -800,6 +985,7 @@ async function init() {
       }
 
       updateCall(dt);
+      updateHitTunnel(dt);
 
       rain.update(dt, player.group.position, player.speed);
       updateCamera(dt);
@@ -831,9 +1017,14 @@ async function init() {
         bloomPass.strength.value = level.theme.bloom[0];
       }
 
-      if (state.distance >= level.goal) endRun(true);
-      else if (state.time <= 0) endRun(false);
-    } else {
+      if (level.finale && state.distance >= (level.slipAt ?? level.goal)) {
+        beginSlip();
+      } else if (!level.finale && state.distance >= level.goal) {
+        endRun(true);
+      } else if (state.time <= 0) {
+        endRun(false);
+      }
+    } else if (state.mode !== 'slip') {
       world.update(dt * 0.25, player, state.distance, clock.elapsedTime);
       rain.update(dt, player.group.position, 4);
       const sway = Math.sin(clock.elapsedTime * 0.35) * 0.55;

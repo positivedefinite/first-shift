@@ -92,6 +92,43 @@ body {
   opacity: 1;
 }
 
+/* Way Back wipeout — dark red flood */
+.blood {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(ellipse 50% 55% at 50% 45%, rgba(80, 0, 0, 0.15), transparent 55%),
+    radial-gradient(ellipse at center, transparent 20%, rgba(40, 0, 0, 0.75) 70%, rgba(10, 0, 0, 0.95) 100%),
+    rgba(50, 0, 8, 0.55);
+  transition: opacity 0.6s ease;
+}
+
+.blood.on {
+  opacity: 1;
+  animation: bloodPulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes bloodPulse {
+  from {
+    filter: brightness(0.85);
+  }
+  to {
+    filter: brightness(1.1);
+  }
+}
+
+#end.finale .debrief-quote p {
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+}
+
+#end.finale h1 {
+  font-size: clamp(2.2rem, 7vw, 3.8rem);
+}
+
 #minimap-wrap {
   position: absolute;
   right: 1.1rem;
@@ -551,6 +588,44 @@ body {
   color: #ff6b4a;
 }
 
+/* Movie-dialogue inner thought */
+.thought {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  max-width: min(34rem, 88vw);
+  margin: 0;
+  padding: 0 0.5rem;
+  pointer-events: none;
+  z-index: 5;
+  text-align: center;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: clamp(0.85rem, 2.2vw, 1.05rem);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: rgba(232, 238, 248, 0.92);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.thought.on {
+  opacity: 1;
+}
+
+.thought::before {
+  content: '“';
+  opacity: 0.45;
+}
+
+.thought::after {
+  content: '”';
+  opacity: 0.45;
+}
+
 @keyframes toastPop {
   0% {
     opacity: 0;
@@ -738,9 +813,9 @@ button:active {
 
 @media (min-width: 820px) {
   .level-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    width: min(58rem, 96vw);
-    gap: 0.75rem;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: min(68rem, 96vw);
+    gap: 0.7rem;
   }
 }
 

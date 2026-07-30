@@ -691,7 +691,15 @@ export function createWorld(scene) {
     g.add(bulb);
 
     const stride =
-      theme.mode === 'downtown' ? 3 : theme.mode === 'oldtown' ? 3 : theme.mode === 'borough' ? 3 : 4;
+      theme.mode === 'wayback'
+        ? 4
+        : theme.mode === 'downtown'
+          ? 3
+          : theme.mode === 'oldtown'
+            ? 3
+            : theme.mode === 'borough'
+              ? 3
+              : 4;
     if (index % stride === 0) {
       const light = new THREE.PointLight(
         theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
@@ -821,6 +829,89 @@ export function createWorld(scene) {
       bulb.position.copy(curve.getPoint(0.5));
       props.add(bulb);
       pool.clutter.push(bulb);
+    }
+  }
+
+  function spawnBridgeRail(z, side) {
+    const g = new THREE.Group();
+    const postMat = new THREE.MeshStandardMaterial({
+      color: 0x3a4450,
+      roughness: 0.45,
+      metalness: 0.55,
+      emissive: 0x101820,
+      emissiveIntensity: 0.15,
+    });
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 0.12), postMat);
+    post.position.y = 0.7;
+    g.add(post);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 2.2), postMat);
+    rail.position.set(0, 1.25, 0);
+    g.add(rail);
+    const railLow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 2.2), postMat);
+    railLow.position.set(0, 0.75, 0);
+    g.add(railLow);
+    g.position.set(side * (ROAD_W / 2 + 0.35), 0, z);
+    props.add(g);
+    pool.clutter.push(g);
+  }
+
+  /** Distant downtown + old-town towers — left side only */
+  function spawnFarCity(z) {
+    const g = new THREE.Group();
+    const cluster = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < cluster; i++) {
+      const gothic = Math.random() > 0.45;
+      const h = gothic ? 10 + Math.random() * 18 : 14 + Math.random() * 28;
+      const w = gothic ? 2.2 + Math.random() * 2 : 3 + Math.random() * 4;
+      const col = gothic ? pick([0x2a2620, 0x322e28, 0x1e1a16]) : pick([0x101828, 0x181c28, 0x0e1420]);
+      const tower = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, w * 0.7),
+        new THREE.MeshStandardMaterial({
+          color: col,
+          roughness: 0.85,
+          metalness: gothic ? 0.08 : 0.35,
+          emissive: col,
+          emissiveIntensity: 0.12,
+        }),
+      );
+      tower.position.set(i * (w + 1.2), h * 0.5, (Math.random() - 0.5) * 4);
+      g.add(tower);
+      if (!gothic && Math.random() > 0.35) {
+        const tip = new THREE.Mesh(
+          new THREE.BoxGeometry(w * 0.7, 0.35, w * 0.5),
+          neonMat(pick(theme.neon), 2.4),
+        );
+        tip.position.y = h * 0.5 + 0.2;
+        tower.add(tip);
+      }
+      if (gothic && Math.random() > 0.5) {
+        const spire = new THREE.Mesh(
+          new THREE.ConeGeometry(w * 0.25, 2.5, 4),
+          new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.9 }),
+        );
+        spire.position.y = h * 0.5 + 1.2;
+        tower.add(spire);
+      }
+    }
+    g.position.set(-(ROAD_W / 2 + 28 + Math.random() * 18), 0, z);
+    props.add(g);
+    pool.buildings.push(g);
+  }
+
+  function seedWayback() {
+    clearScenery();
+    const spacing = 16;
+    const count = 42;
+    recycleSpan = count * spacing;
+
+    for (let i = 0; i < count; i++) {
+      const z = -i * spacing - 3;
+      spawnBridgeRail(z, -1);
+      spawnBridgeRail(z, 1);
+      spawnBridgeRail(z - spacing * 0.5, -1);
+      spawnBridgeRail(z - spacing * 0.5, 1);
+      if (i % 4 === 0) spawnLamp(z, i % 2 === 0 ? -1 : 1, i);
+      if (i % 2 === 0) spawnFarCity(z - Math.random() * 6);
     }
   }
 
@@ -999,6 +1090,10 @@ export function createWorld(scene) {
   }
 
   function seedScenery() {
+    if (theme.mode === 'wayback') {
+      seedWayback();
+      return;
+    }
     clearScenery();
     const spacing = theme.buildingSpacing;
     const count = 34;
@@ -1168,7 +1263,7 @@ export function createWorld(scene) {
       neonSignMat.color.setHex(0xffb347);
       neonSignMat.emissive.setHex(0xffb347);
       goalLight.color.setHex(0xffb347);
-    } else if (theme.mode === 'downtown') {
+    } else if (theme.mode === 'downtown' || theme.mode === 'wayback') {
       neonSignMat.color.setHex(0xff2d6a);
       neonSignMat.emissive.setHex(0xff2d6a);
       goalLight.color.setHex(0xff2d6a);
@@ -1181,6 +1276,7 @@ export function createWorld(scene) {
       neonSignMat.emissive.setHex(0xff9f1c);
       goalLight.color.setHex(0xff9f1c);
     }
+    goal.visible = false;
   }
 
   seedScenery();
@@ -1231,6 +1327,9 @@ export function createWorld(scene) {
     update(dt, player, distance, time) {
       const move = player.speed * dt;
 
+      if (theme.mode === 'wayback' && level.goal) {
+        sky.setMoonRise(distance / level.goal);
+      }
       sky.update(time ?? performance.now() * 0.001, player.group.position);
 
       for (const l of pool.lamps) l.group.position.z += move;
@@ -1303,7 +1402,7 @@ export function createWorld(scene) {
         nextPickupAt += level.pickupGap[0] + Math.random() * level.pickupGap[1];
       }
 
-      if (distance > level.goal - 130) goal.visible = true;
+      if (theme.mode !== 'wayback' && distance > level.goal - 130) goal.visible = true;
 
       for (const p of pool.pickups) {
         p.mesh.position.y = 0.85 + Math.sin(t * 2.2 + p.phase) * 0.1;
@@ -1391,13 +1490,18 @@ export function createWorld(scene) {
           continue;
         }
 
-        // Walkers — soft hit then clear
+        // Walkers — soft hit, stay on the road (don't despawn)
         if (player.invuln > 0 || o.cool > 0) continue;
         if (o.mesh.position.z <= -1.8 || o.mesh.position.z >= 1.4) continue;
 
         o.bumps += 1;
-        props.remove(o.mesh);
-        pool.obstacles.splice(i, 1);
+        o.cool = 1.15;
+        const away = o.mesh.position.x >= player.group.position.x ? 1 : -1;
+        o.mesh.position.x += away * 0.4;
+        if (o.strafeSpeed) {
+          o.strafeSpeed = away * Math.max(Math.abs(o.strafeSpeed), 1.15);
+          o.mesh.rotation.y = away > 0 ? Math.PI / 2 : -Math.PI / 2;
+        }
         if (!crashEvent) {
           crashEvent = {
             type: 'crash',

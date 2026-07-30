@@ -11,9 +11,9 @@ const PEDAL_ACCEL = 8.5;
 const BOOST_ACCEL = 13;
 const ANGER_COUNT = 10;
 /** Good handling pickup: ramp +25% over 1s, ease back over 3s */
-const HANDLING_PEAK = 1.25;
+const HANDLING_PEAK = 1.38;
 const HANDLING_RAMP = 1;
-const HANDLING_FALL = 3;
+const HANDLING_FALL = 3.4;
 const HANDLING_TOTAL = HANDLING_RAMP + HANDLING_FALL;
 
 export function createPlayer(scene) {
@@ -226,6 +226,7 @@ export function createPlayer(scene) {
     handlingT: -1, // <0 inactive; else seconds into envelope
     onCall: false, // girlfriend call — forced slow
     scrapes: 0, // run-wide bump count — each hit slows harder
+    tumbling: false,
 
     // world.js still reads this name for brief post-hit grace
     get invuln() {
@@ -265,9 +266,11 @@ export function createPlayer(scene) {
       api.handlingT = -1;
       api.onCall = false;
       api.scrapes = 0;
+      api.tumbling = false;
       api.startX = START_X;
       trail.material.opacity = 0;
       group.visible = true;
+      group.position.y = 0;
       rider.rotation.z = 0;
       head.position.x = 0;
       for (const bit of angerBits) {
@@ -293,6 +296,16 @@ export function createPlayer(scene) {
       burstAnger();
     },
 
+    /** Way Back finale — wipeout */
+    startTumble() {
+      api.tumbling = true;
+      api.stalled = false;
+      api.onCall = false;
+      api.speed = 0;
+      api.vx = 0;
+      burstAnger();
+    },
+
     /** Solid body contact — shove off a van without phasing through */
     block(nx, amount = 1) {
       // nx: push direction on X (−1 / +1), 0 = frontal wall
@@ -313,6 +326,21 @@ export function createPlayer(scene) {
     },
 
     update(dt, input) {
+      // --- finale tumble ---
+      if (api.tumbling) {
+        group.rotation.z += dt * 5.5;
+        group.rotation.x += dt * 3.2;
+        group.rotation.y += dt * 1.8;
+        group.position.y = Math.max(-0.35, group.position.y - dt * 0.9);
+        group.position.x += Math.sin(performance.now() * 0.02) * dt * 1.2;
+        body.rotation.z += dt * 7;
+        rider.rotation.z += dt * 4;
+        trail.material.opacity = 0;
+        headLight.intensity = 1.5;
+        updateAnger(dt);
+        return { forward: 0, boosting: false, stalled: false, tumbling: true };
+      }
+
       // --- stalled: parked on the curb ---
       if (api.stalled) {
         const curb = api.parkSide * ROAD_HALF;

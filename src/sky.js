@@ -212,9 +212,17 @@ export function createSky(scene) {
   }
   root.add(clouds);
 
+  let mode = 'suburb';
+  let moonRise = 0; // 0..1 — wayback rising moon ahead
+
   return {
     root,
+    setMoonRise(p) {
+      moonRise = Math.max(0, Math.min(1, p));
+    },
     applyTheme(theme) {
+      mode = theme.mode || 'suburb';
+      moonRise = 0;
       if (domeMap) domeMap.dispose();
       if (plateMap) plateMap.dispose();
       domeMap = makeSkyTexture(theme.skyStops);
@@ -225,10 +233,25 @@ export function createSky(scene) {
       plate.material.needsUpdate = true;
       glow.material.color.setHex(theme.glowColor);
       warmGlow.material.color.setHex(theme.warmGlow);
-      skyline.visible = theme.skylineDensity > 0.2;
-      skyline.scale.set(1, 0.5 + theme.skylineDensity * 0.8, 1);
-      stars.material.opacity =
-        theme.mode === 'suburb' ? 0.95 : theme.mode === 'downtown' ? 0.55 : theme.mode === 'oldtown' ? 0.7 : 0.85;
+      skyline.visible = (theme.skylineDensity || 0) > 0.2;
+      skyline.scale.set(1, 0.5 + (theme.skylineDensity || 0) * 0.8, 1);
+      clouds.visible = mode !== 'wayback';
+      if (mode === 'wayback') {
+        stars.material.opacity = 1;
+        moon.material.opacity = 0.95;
+        moon.scale.setScalar(1.55);
+        moonHalo.scale.setScalar(1.4);
+        glow.material.opacity = 0.1;
+        warmGlow.material.opacity = 0.12;
+      } else {
+        moon.material.opacity = 0.85;
+        moon.scale.setScalar(1);
+        moonHalo.scale.setScalar(1);
+        glow.material.opacity = 0.18;
+        warmGlow.material.opacity = 0.16;
+        stars.material.opacity =
+          mode === 'suburb' ? 0.95 : mode === 'downtown' ? 0.55 : mode === 'oldtown' ? 0.7 : 0.85;
+      }
     },
     update(t, origin) {
       root.position.x = origin.x * 0.1;
@@ -236,9 +259,21 @@ export function createSky(scene) {
       glow.position.z = origin.z - 78;
       warmGlow.position.z = origin.z - 76;
       skyline.position.z = origin.z - 74;
-      moon.position.z = origin.z - 70;
-      moonHalo.position.z = origin.z - 70;
       stars.rotation.y = t * 0.01;
+
+      if (mode === 'wayback') {
+        // Moon rises dead ahead as you cross the span
+        const y = 14 + moonRise * 42;
+        moon.position.set(1.5, y, origin.z - 58);
+        moonHalo.position.set(1.5, y, origin.z - 58);
+        glow.position.x = -35;
+        warmGlow.position.x = -30;
+      } else {
+        moon.position.set(-28, 52, origin.z - 70);
+        moonHalo.position.set(-28, 52, origin.z - 70);
+        glow.position.x = 0;
+        warmGlow.position.x = 0;
+      }
 
       for (const cloud of clouds.children) {
         cloud.position.x += Math.sin(t * 0.1 + cloud.position.y) * 0.01;
