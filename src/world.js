@@ -1384,7 +1384,6 @@ export function createWorld(scene) {
             }
             crashEvent = {
               type: 'crash',
-              penalty: 3.5 + (o.bumps - 1) * 2.5,
               bumps: o.bumps,
               kind: o.kind,
             };
@@ -1402,7 +1401,6 @@ export function createWorld(scene) {
         if (!crashEvent) {
           crashEvent = {
             type: 'crash',
-            penalty: 3.5 + (o.bumps - 1) * 2.5,
             bumps: o.bumps,
             kind: o.kind,
           };

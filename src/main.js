@@ -783,15 +783,14 @@ async function init() {
       const hit = world.update(dt, player, state.distance, clock.elapsedTime);
 
       if (!result.stalled && hit && hit.type === 'crash') {
-        const penalty = hit.penalty ?? 3.5;
         state.shake = 0.85 + Math.min(0.4, (hit.bumps - 1) * 0.15);
-        state.time -= penalty;
         player.punish();
-        const shown = penalty % 1 ? penalty.toFixed(1) : String(penalty);
+        const n = player.scrapes;
+        const tax = Math.round((1 - player.scrapeMult()) * 100);
         els.status.textContent =
-          hit.bumps > 1
-            ? `SCRAPE ×${hit.bumps} — −${shown}s · peel off`
-            : `HIT — −${shown}s · keep pedaling`;
+          n > 1
+            ? `SCRAPE ×${n} — slower (−${tax}% top speed)`
+            : `HIT — slowed · keep pedaling`;
         pulseEvent('hit');
       } else if (!result.stalled && hit === 'pickup') {
         player.goodHandling();

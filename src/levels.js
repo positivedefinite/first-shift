@@ -139,7 +139,7 @@ export const LEVELS = [
     debriefQuote:
       'Thank you. The building already knew your name. Please forget the lobby. It will not forget you.',
     goal: 1100,
-    startTime: 58,
+    startTime: 61,
     obstacleStart: 50,
     obstacleGapEarly: [20, 14],
     obstacleGapLate: [12, 10],

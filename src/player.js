@@ -225,10 +225,16 @@ export function createPlayer(scene) {
     startX: START_X,
     handlingT: -1, // <0 inactive; else seconds into envelope
     onCall: false, // girlfriend call — forced slow
+    scrapes: 0, // run-wide bump count — each hit slows harder
 
     // world.js still reads this name for brief post-hit grace
     get invuln() {
       return api.hitCooldown;
+    },
+
+    /** Sticky max-speed tax from scrapes (every bump stacks) */
+    scrapeMult() {
+      return Math.max(0.48, 1 - api.scrapes * 0.11);
     },
 
     /** Current speed multiplier from good-handling pickup */
@@ -258,6 +264,7 @@ export function createPlayer(scene) {
       api.parkSide = 1;
       api.handlingT = -1;
       api.onCall = false;
+      api.scrapes = 0;
       api.startX = START_X;
       trail.material.opacity = 0;
       group.visible = true;
@@ -274,8 +281,14 @@ export function createPlayer(scene) {
       api.handlingT = 0;
     },
 
+    /** Obstacle hit — no clock penalty; speed slam that stacks each scrape */
     punish() {
-      api.speed *= 0.4;
+      api.scrapes += 1;
+      const n = api.scrapes;
+      // Instant cut: 1st ~45% left, then harsher floor each time
+      const keep = Math.max(0.12, 0.48 - (n - 1) * 0.08);
+      api.speed = Math.max(0.8, api.speed * keep);
+      api.boostEnergy = Math.max(0, api.boostEnergy - 0.2);
       api.hitCooldown = 0.7; // grace only — no blink
       burstAnger();
     },
@@ -327,7 +340,7 @@ export function createPlayer(scene) {
         api.handlingT += dt;
         if (api.handlingT >= HANDLING_TOTAL) api.handlingT = -1;
       }
-      const hMult = api.handlingMult();
+      const hMult = api.handlingMult() * api.scrapeMult();
       const maxSpd = MAX_SPEED * hMult;
       const boostSpd = BOOST_SPEED * hMult;
       const pedalAcc = PEDAL_ACCEL * hMult;
