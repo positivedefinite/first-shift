@@ -493,6 +493,7 @@ function resetSpanFate() {
   els.shockwave?.classList.remove('on');
   world.setMeteorIntensity?.(0);
   world.setMeteorProximity?.(0);
+  world.setMeteorMidFade?.(0.8);
   music.clearDrama?.();
 }
 
@@ -533,6 +534,7 @@ function beginOmen() {
   state.shake = 0.28;
   els.status.textContent = '—';
   setMeteorTier(2);
+  world.setMeteorMidFade?.(0.2); // most streaks now reach the horizon
   music.omenSting();
 }
 
@@ -626,6 +628,8 @@ function updateSpanFate(dt) {
 
   const prox = p < 0.12 ? 0 : Math.max(0, Math.min(1, (p - 0.12) / 0.88));
   world.setMeteorProximity?.(prox * prox); // ease-in — brighter/longer, never in front of facades
+  // Mid-fade: 80% before weird → 20% after (set hard in beginOmen; keep in sync here)
+  world.setMeteorMidFade?.(spanFate.omenStarted ? 0.2 : 0.8);
 
   if (!spanFate.omenStarted && state.distance >= omenAt) {
     beginOmen();
@@ -683,6 +687,7 @@ function showFinale() {
   els.shockwave?.classList.remove('on');
   world.setMeteorIntensity?.(0);
   world.setMeteorProximity?.(0);
+  world.setMeteorMidFade?.(0.8);
   els.end.classList.remove('hidden');
   els.end.classList.add('win-debrief', 'finale');
   els.debrief.classList.remove('hidden');

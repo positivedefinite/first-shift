@@ -136,7 +136,7 @@ export function createSky(scene) {
   }
 
   const moonMap = makeMoonTexture();
-  // Opaque body so stars never show through
+  // Opaque body so stars never show through (DoubleSide — camera looks −Z)
   const moon = new THREE.Mesh(
     new THREE.CircleGeometry(2.15, 40),
     new THREE.MeshBasicMaterial({
@@ -145,6 +145,7 @@ export function createSky(scene) {
       transparent: false,
       depthWrite: true,
       depthTest: true,
+      side: THREE.DoubleSide,
     }),
   );
   moon.position.set(-28, 52, -70);
@@ -162,6 +163,7 @@ export function createSky(scene) {
       depthWrite: false,
       depthTest: true,
       blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
     }),
   );
   moonHalo.position.copy(moon.position);
@@ -268,10 +270,60 @@ export function createSky(scene) {
   meteorLines.renderOrder = -1;
   root.add(meteorLines);
 
-  /** @type {{ x:number,y:number,z:number, vx:number,vy:number,vz:number, life:number, max:number, len:number }[]} */
+  /** Horizon impact flashes (visual only) */
+  const BANG_MAX = 20;
+  const bangs = [];
+  for (let i = 0; i < BANG_MAX; i++) {
+    const group = new THREE.Group();
+    const outer = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 16),
+      new THREE.MeshBasicMaterial({
+        color: 0xffa060,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    const core = new THREE.Mesh(
+      new THREE.CircleGeometry(0.4, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff4d8,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    group.add(outer, core);
+    group.visible = false;
+    group.renderOrder = 0;
+    root.add(group);
+    bangs.push({
+      group,
+      outer,
+      core,
+      life: 0,
+      max: 0.25,
+      size: 1,
+      x: 0,
+      y: 0,
+      z: 0,
+    });
+  }
+
+  /** @type {{ x:number,y:number,z:number, vx:number,vy:number,vz:number, life:number, len:number, near:number, fadeY:number|null }[]} */
   const meteors = [];
   let meteorIntensity = 0; // 0 none · 1 one · 2 few · 3 clusters
-  let meteorProximity = 0; // 0 far sky · 1 screaming past the bridge
+  let meteorProximity = 0; // 0 far sky · 1 late ride
+  /** Chance a streak dies mid-sky (no bang). 0.8 calm → 0.2 after weird */
+  let midFadeChance = 0.8;
   let meteorCooldown = 0;
   let singleSpent = false;
 
@@ -281,10 +333,40 @@ export function createSky(scene) {
 
   /** Keep streaks deep in the sky — never closer than far-city / moon plane */
   const METEOR_Z_NEAR = -58;
+  /** Dive into skyline haze — was 10 (died mid-sky) */
+  const HORIZON_Y = 2.0;
   // Parallel shower — same angle for every streak (down + slightly left, into deep sky)
   const METEOR_DIR_X = -0.32;
   const METEOR_DIR_Y = -1;
   const METEOR_DIR_Z = -0.12;
+
+  function spawnBang(x, y, z, near) {
+    let slot = null;
+    for (const b of bangs) {
+      if (b.life <= 0) {
+        slot = b;
+        break;
+      }
+    }
+    if (!slot) {
+      // Steal oldest
+      slot = bangs[0];
+      for (const b of bangs) {
+        if (b.life < slot.life) slot = b;
+      }
+    }
+    const size = lerp(0.7, 5.2, near) * (0.85 + Math.random() * 0.35);
+    slot.x = x;
+    slot.y = y;
+    slot.z = z;
+    slot.size = size;
+    slot.max = lerp(0.16, 0.42, near);
+    slot.life = slot.max;
+    slot.group.visible = true;
+    slot.group.scale.setScalar(size * 0.35);
+    slot.outer.material.opacity = 0.85;
+    slot.core.material.opacity = 1;
+  }
 
   function spawnMeteor(cluster = false) {
     if (meteors.length >= METEOR_MAX) return;
@@ -294,19 +376,29 @@ export function createSky(scene) {
       lerp(16, 12, near) +
       Math.random() * lerp(42, 26, near) +
       (cluster ? (Math.random() - 0.5) * 6 : 0);
-    const y = lerp(58, 28, near) + Math.random() * lerp(34, 18, near);
+    const y = lerp(62, 36, near) + Math.random() * lerp(28, 16, near);
     const z = METEOR_Z_NEAR - 8 - Math.random() * lerp(55, 35, near) - near * 12;
-    const speed = lerp(22, 40, near) * (0.9 + Math.random() * 0.2);
+    const speed = lerp(18, 34, near) * (0.92 + Math.random() * 0.16);
+    const vy = METEOR_DIR_Y * speed;
+    // Live long enough to reach the horizon (old short life killed mid-fall)
+    const life = (y - HORIZON_Y) / Math.max(0.01, -vy) + 0.4;
+    // Some wink out mid-sky — common early, rare after weird
+    const fadeMid = Math.random() < midFadeChance;
+    const fadeY = fadeMid
+      ? lerp(HORIZON_Y + 10, y * 0.52, 0.25 + Math.random() * 0.55)
+      : null;
     meteors.push({
       x,
       y,
       z,
       vx: METEOR_DIR_X * speed,
-      vy: METEOR_DIR_Y * speed,
+      vy,
       vz: METEOR_DIR_Z * speed,
-      life: lerp(1.2, 0.7, near) + Math.random() * 0.45,
-      max: 1,
-      len: lerp(2.0, 5.5, near) + Math.random() * lerp(1.2, 2.5, near),
+      life,
+      near,
+      fadeY,
+      // Later ride → longer / heavier streaks
+      len: lerp(2.6, 14, near) * (0.9 + Math.random() * 0.25),
     });
   }
 
@@ -314,6 +406,10 @@ export function createSky(scene) {
     if (mode !== 'wayback' || meteorIntensity <= 0) {
       meteorGeo.setDrawRange(0, 0);
       meteorLines.visible = false;
+      for (const b of bangs) {
+        b.life = 0;
+        b.group.visible = false;
+      }
       return;
     }
     meteorLines.visible = true;
@@ -341,6 +437,8 @@ export function createSky(scene) {
       }
     }
 
+    const ox = origin.x * 0.1;
+    const oz = origin.z;
     let draw = 0;
     for (let i = meteors.length - 1; i >= 0; i--) {
       const m = meteors[i];
@@ -348,25 +446,55 @@ export function createSky(scene) {
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       m.z += m.vz * dt;
-      // Cull if they dip too low or somehow creep past the skyline plane
-      if (m.life <= 0 || m.y < 10 || m.z > METEOR_Z_NEAR) {
+
+      // Mid-sky fade — no bang
+      if (m.fadeY != null && m.y <= m.fadeY) {
         meteors.splice(i, 1);
         continue;
       }
-      const ox = origin.x * 0.1;
-      const oz = origin.z;
+      if (m.y <= HORIZON_Y) {
+        spawnBang(m.x, HORIZON_Y + 0.4, m.z, m.near);
+        meteors.splice(i, 1);
+        continue;
+      }
+      // Safety — drifted too far / stalled
+      if (m.life <= 0 || m.z > METEOR_Z_NEAR + 4) {
+        meteors.splice(i, 1);
+        continue;
+      }
+
+      const trail = 0.035 * m.len * (1 + m.near * 0.6);
       const ix = draw * 6;
       meteorPos[ix] = m.x + ox;
       meteorPos[ix + 1] = m.y;
       meteorPos[ix + 2] = m.z + oz;
-      meteorPos[ix + 3] = m.x + ox - m.vx * 0.04 * m.len;
-      meteorPos[ix + 4] = m.y - m.vy * 0.04 * m.len;
-      meteorPos[ix + 5] = m.z + oz - m.vz * 0.04 * m.len;
+      meteorPos[ix + 3] = m.x + ox - m.vx * trail;
+      meteorPos[ix + 4] = m.y - m.vy * trail;
+      meteorPos[ix + 5] = m.z + oz - m.vz * trail;
       draw++;
     }
     meteorGeo.attributes.position.needsUpdate = true;
     meteorGeo.setDrawRange(0, draw * 2);
-    meteorMat.opacity = 0.5 + meteorIntensity * 0.1 + meteorProximity * 0.25;
+    meteorMat.opacity = 0.55 + meteorIntensity * 0.1 + meteorProximity * 0.3;
+
+    // Horizon bangs — expand + fade
+    for (const b of bangs) {
+      if (b.life <= 0) {
+        b.group.visible = false;
+        continue;
+      }
+      b.life -= dt;
+      const u = 1 - Math.max(0, b.life / b.max);
+      const pop = u < 0.2 ? u / 0.2 : 1;
+      const fade = u < 0.25 ? 1 : 1 - (u - 0.25) / 0.75;
+      b.group.visible = true;
+      b.group.position.set(b.x + ox, b.y, b.z + oz);
+      b.group.scale.setScalar(b.size * (0.25 + pop * 1.15));
+      b.outer.material.opacity = 0.75 * fade;
+      b.core.material.opacity = fade;
+      b.core.scale.setScalar(1.1 + u * 0.8);
+      if (b.life <= 0) b.group.visible = false;
+    }
   }
 
   let mode = 'suburb';
@@ -384,23 +512,38 @@ export function createSky(scene) {
         meteorIntensity = next;
         meteorCooldown = next === 1 ? 1.2 + Math.random() * 2 : 0.2;
         if (next <= 1) singleSpent = false;
-        if (next === 0) meteors.length = 0;
+        if (next === 0) {
+          meteors.length = 0;
+          for (const b of bangs) {
+            b.life = 0;
+            b.group.visible = false;
+          }
+        }
       }
     },
     /** 0 far horizon streaks · 1 nearly overhead */
     setMeteorProximity(p) {
       meteorProximity = Math.max(0, Math.min(1, p));
     },
+    /** 0..1 — chance streak dies mid-sky without a bang */
+    setMeteorMidFade(p) {
+      midFadeChance = Math.max(0, Math.min(1, p));
+    },
     applyTheme(theme) {
       mode = theme.mode || 'suburb';
       moonRise = 0;
       meteorIntensity = 0;
       meteorProximity = 0;
+      midFadeChance = 0.8;
       meteors.length = 0;
       singleSpent = false;
       meteorCooldown = 0;
       meteorLines.visible = false;
       meteorGeo.setDrawRange(0, 0);
+      for (const b of bangs) {
+        b.life = 0;
+        b.group.visible = false;
+      }
       if (domeMap) domeMap.dispose();
       if (plateMap) plateMap.dispose();
       domeMap = makeSkyTexture(theme.skyStops);
@@ -444,10 +587,9 @@ export function createSky(scene) {
       stars.rotation.y = t * 0.01;
 
       if (mode === 'wayback') {
-        // Moon rises dead ahead as you cross the span
-        const y = 14 + moonRise * 42;
-        moon.position.set(1.5, y, origin.z - 58);
-        moonHalo.position.set(1.5, y, origin.z - 58.2);
+        // Fixed ahead, low enough to sit in FOV above the road (y=44 was above the frame)
+        moon.position.set(1.5, 22, origin.z - 52);
+        moonHalo.position.set(1.5, 22, origin.z - 52.2);
         glow.position.x = -35;
         warmGlow.position.x = -30;
       } else {

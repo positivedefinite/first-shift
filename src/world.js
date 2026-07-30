@@ -1478,6 +1478,9 @@ export function createWorld(scene) {
     setMeteorProximity(p) {
       sky.setMeteorProximity?.(p);
     },
+    setMeteorMidFade(p) {
+      sky.setMeteorMidFade?.(p);
+    },
 
     /** Fireball + shockwave + left facade blown apart */
     flashLeftBlast(playerZ = 0) {
