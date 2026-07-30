@@ -19,6 +19,7 @@ const DISTRICTS = {
     delayTime: 0.36,
     delayFb: 0.32,
     rainTone: 1100,
+    rainGain: 0.045,
     arpGain: 0.04,
     padGain: 0.08,
   },
@@ -35,6 +36,7 @@ const DISTRICTS = {
     delayTime: 0.28,
     delayFb: 0.38,
     rainTone: 1500,
+    rainGain: 0.045,
     arpGain: 0.055,
     padGain: 0.07,
   },
@@ -51,6 +53,7 @@ const DISTRICTS = {
     delayTime: 0.22,
     delayFb: 0.42,
     rainTone: 2000,
+    rainGain: 0.05,
     arpGain: 0.07,
     padGain: 0.06,
   },
@@ -67,24 +70,28 @@ const DISTRICTS = {
     delayTime: 0.18,
     delayFb: 0.48,
     rainTone: 900,
+    rainGain: 0.04,
     arpGain: 0.065,
     padGain: 0.075,
   },
   wayback: {
-    bpmBase: 54,
-    bpmDrive: 6,
-    root: 32.7, // C
-    padSemis: [0, 5, 9, 16], // open calm
-    bassLine: [0, 0, 5, 0],
-    arpSparse: [0, , 5, , 12, , 9, ],
-    arpBusy: [0, 5, 9, 12, 16, 12, 9, 5],
-    padCutoff: 220,
+    // Clear-sky bridge — no rain hiss, warm major lullaby
+    calm: true,
+    bpmBase: 46,
+    bpmDrive: 2,
+    root: 36.71, // D
+    padSemis: [0, 7, 12, 16], // open major
+    bassLine: [0, 0, 7, 5],
+    arpSparse: [0, , 12, , 7, , 19, ],
+    arpBusy: [0, 7, 12, , 16, 12, 7, ],
+    padCutoff: 380,
     arpWave: 'sine',
-    delayTime: 0.42,
-    delayFb: 0.28,
-    rainTone: 800,
-    arpGain: 0.03,
-    padGain: 0.1,
+    delayTime: 0.52,
+    delayFb: 0.2,
+    rainTone: 600,
+    rainGain: 0, // dry night — silence the rain bed
+    arpGain: 0.028,
+    padGain: 0.13,
   },
 };
 
@@ -99,9 +106,65 @@ export function createMusic() {
   let ringTimer = null;
   let talkNodes = null;
   let district = DISTRICTS.suburb;
+  /** Way Back drama bus — omen → dread → doom */
+  let drama = null;
 
   function rootHz() {
     return district.root;
+  }
+
+  function stopDrama(soft = true) {
+    if (!drama || !ctx) {
+      drama = null;
+      return;
+    }
+    const t = ctx.currentTime;
+    const bus = drama.gain;
+    const oscs = drama.oscs || [];
+    const timersLocal = drama.timers || [];
+    for (const id of timersLocal) clearTimeout(id);
+    bus.gain.cancelScheduledValues(t);
+    bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), t);
+    bus.gain.exponentialRampToValueAtTime(0.0001, t + (soft ? 1.4 : 0.12));
+    const stopAt = (soft ? 1600 : 150);
+    setTimeout(() => {
+      for (const o of oscs) {
+        try {
+          o.stop();
+        } catch {
+          /* done */
+        }
+      }
+    }, stopAt);
+    drama = null;
+  }
+
+  function ensureDramaBus() {
+    ensure();
+    if (drama) return drama;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    gain.connect(nodes.comp);
+    drama = { gain, oscs: [], timers: [], dread: 0 };
+    return drama;
+  }
+
+  function tone(freq, type, when, dur, peak, dest, slideTo = null) {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, when);
+    if (slideTo != null) {
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), when + dur);
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(peak, when + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    o.connect(g);
+    g.connect(dest);
+    o.start(when);
+    o.stop(when + dur + 0.05);
+    return o;
   }
 
   function ensure() {
@@ -251,6 +314,8 @@ export function createMusic() {
     nodes.arpGain.gain.setTargetAtTime(district.arpGain, t, 0.25);
     nodes.padFilter.frequency.setTargetAtTime(district.padCutoff, t, 0.3);
     nodes.rainFilter.frequency.setTargetAtTime(district.rainTone, t, 0.3);
+    const rg = district.rainGain ?? 0.045;
+    nodes.rainGain.gain.setTargetAtTime(Math.max(0.0001, rg), t, 0.35);
   }
 
   function beepArp(semi, when, dur = 0.12) {
@@ -278,11 +343,14 @@ export function createMusic() {
     const bpm = district.bpmBase + intensity * district.bpmDrive;
     const beat = 60 / bpm;
 
-    // bass pump — heavier in later districts
-    const peak = 0.12 + intensity * 0.1 + (district.bpmBase - 66) * 0.0004;
+    // bass pump — softer on Way Back calm stretch
+    const calm = !!district.calm;
+    const peak = calm
+      ? 0.035 + intensity * 0.02
+      : 0.12 + intensity * 0.1 + (district.bpmBase - 66) * 0.0004;
     nodes.bassGain.gain.cancelScheduledValues(t);
     nodes.bassGain.gain.setValueAtTime(0.001, t);
-    nodes.bassGain.gain.exponentialRampToValueAtTime(peak, t + 0.03);
+    nodes.bassGain.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t + 0.03);
     nodes.bassGain.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.8);
 
     const step = Math.floor(t / (beat * 4)) % 4;
@@ -293,19 +361,23 @@ export function createMusic() {
       0.04,
     );
 
-    const pattern = intensity > 0.5 ? district.arpBusy : district.arpSparse;
-    const density = 0.78 + intensity * 0.15 + (district.bpmBase - 66) * 0.001;
+    const pattern = intensity > 0.5 && !calm ? district.arpBusy : district.arpSparse;
+    const density = calm
+      ? 0.42 + intensity * 0.08
+      : 0.78 + intensity * 0.15 + (district.bpmBase - 66) * 0.001;
     for (let i = 0; i < 8; i++) {
       const n = pattern[i];
       if (n === undefined) continue;
       if (Math.random() > density) continue;
-      beepArp(n, t + i * (beat / 2), 0.08 + Math.random() * 0.05);
+      beepArp(n, t + i * (beat / 2), calm ? 0.14 + Math.random() * 0.08 : 0.08 + Math.random() * 0.05);
     }
 
-    const arpOpen = 700 + intensity * 1000 + Math.sin(t * 0.4) * 100 + (district.bpmBase - 66) * 4;
+    const arpOpen = calm
+      ? 900 + intensity * 200 + Math.sin(t * 0.25) * 60
+      : 700 + intensity * 1000 + Math.sin(t * 0.4) * 100 + (district.bpmBase - 66) * 4;
     nodes.arpFilter.frequency.setTargetAtTime(arpOpen, t, 0.15);
     nodes.padFilter.frequency.setTargetAtTime(
-      district.padCutoff + intensity * 220,
+      district.padCutoff + intensity * (calm ? 80 : 220),
       t,
       0.35,
     );
@@ -314,7 +386,8 @@ export function createMusic() {
       t,
       0.4,
     );
-    nodes.rainGain.gain.setTargetAtTime(0.03 + intensity * 0.03, t, 0.3);
+    const rainTarget = district.rainGain ?? 0.03 + intensity * 0.03;
+    nodes.rainGain.gain.setTargetAtTime(Math.max(0.0001, rainTarget), t, 0.3);
 
     const id = setTimeout(schedulePulse, beat * 1000);
     timers.push(id);
@@ -633,7 +706,13 @@ export function createMusic() {
       // Duck score so talk dominates
       if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.015, t, 0.08);
       if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.012, t, 0.08);
-      if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.02, t, 0.1);
+      if (nodes.rainGain) {
+        nodes.rainGain.gain.setTargetAtTime(
+          district.rainGain === 0 ? 0.0001 : 0.02,
+          t,
+          0.1,
+        );
+      }
 
       const mix = ctx.createGain();
       mix.gain.value = boss ? 1.35 : 1.15;
@@ -787,7 +866,13 @@ export function createMusic() {
 
       if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.015, t, 0.08);
       if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.012, t, 0.08);
-      if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.02, t, 0.1);
+      if (nodes.rainGain) {
+        nodes.rainGain.gain.setTargetAtTime(
+          district.rainGain === 0 ? 0.0001 : 0.02,
+          t,
+          0.1,
+        );
+      }
 
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
@@ -890,7 +975,13 @@ export function createMusic() {
         const t = ctx.currentTime;
         if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(district.padGain, t, 0.12);
         if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(district.arpGain, t, 0.12);
-        if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.045, t, 0.15);
+        if (nodes.rainGain) {
+          nodes.rainGain.gain.setTargetAtTime(
+            Math.max(0.0001, district.rainGain ?? 0.045),
+            t,
+            0.15,
+          );
+        }
       }
     },
 
@@ -917,6 +1008,290 @@ export function createMusic() {
         o.start(t + i * 0.07);
         o.stop(t + i * 0.07 + 0.15);
       }
+    },
+
+    /** Way Back — slight wrongness at omen (keep it uneasy, not apocalyptic) */
+    omenSting() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const bus = ensureDramaBus();
+      const t = ctx.currentTime;
+
+      // Soft duck — calm theme mostly stays
+      if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.06, t, 0.2);
+      if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.02, t, 0.2);
+      fadeMaster(muted ? 0 : 0.58, 0.4);
+
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(0.0001, t);
+      bus.gain.exponentialRampToValueAtTime(0.28, t + 0.12);
+      bus.gain.exponentialRampToValueAtTime(0.14, t + 1.1);
+
+      // Thin uneasy tones — not a brass wall
+      for (const freq of [65.4, 69.3, 98]) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.97, t + 1.1);
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = 420;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.1, t + 0.08);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2);
+        o.connect(f);
+        f.connect(g);
+        g.connect(bus.gain);
+        o.start(t);
+        o.stop(t + 1.25);
+        bus.oscs.push(o);
+      }
+
+      // One soft heart thud
+      tone(62, 'sine', t + 0.05, 0.3, 0.22, bus.gain, 36);
+
+      this.spanDread();
+    },
+
+    /** Sustained dread under the locked stretch */
+    spanDread() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const bus = ensureDramaBus();
+      const t = ctx.currentTime;
+
+      // Quiet pedal — builds later via setDread
+      if (!drama.droneStarted) {
+        drama.droneStarted = true;
+        for (const [freq, type, vol] of [
+          [32.7, 'sine', 0.18],
+          [46.25, 'triangle', 0.08],
+          [65.4, 'sine', 0.04],
+        ]) {
+          const o = ctx.createOscillator();
+          o.type = type;
+          o.frequency.value = freq;
+          const f = ctx.createBiquadFilter();
+          f.type = 'lowpass';
+          f.frequency.value = 140;
+          const g = ctx.createGain();
+          g.gain.value = vol;
+          o.connect(f);
+          f.connect(g);
+          g.connect(bus.gain);
+          o.start(t);
+          bus.oscs.push(o);
+        }
+
+        // Slow heartbeat — quiet at first
+        const beat = () => {
+          if (!drama || muted) return;
+          const now = ctx.currentTime;
+          const hot = drama.dread;
+          tone(58, 'sine', now, 0.28, 0.12 + hot * 0.35, bus.gain, 28);
+          if (hot > 0.35) {
+            tone(48, 'sine', now + 0.16, 0.3, 0.08 + hot * 0.22, bus.gain, 24);
+          }
+          const id = setTimeout(beat, 880 - hot * 280);
+          drama.timers.push(id);
+        };
+        beat();
+      }
+
+      bus.gain.cancelScheduledValues(t);
+      const cur = Math.max(0.0001, bus.gain.value);
+      bus.gain.setValueAtTime(cur, t);
+      bus.gain.linearRampToValueAtTime(0.18, t + 1.2);
+    },
+
+    /** 0..1 — raise dread over the locked stretch */
+    setDread(u) {
+      if (!drama || !ctx) return;
+      drama.dread = Math.max(0, Math.min(1, u));
+      const t = ctx.currentTime;
+      const target = 0.16 + drama.dread * 0.5;
+      drama.gain.gain.setTargetAtTime(target, t, 0.5);
+      if (nodes.padGain) {
+        nodes.padGain.gain.setTargetAtTime(0.055 * (1 - drama.dread * 0.55), t, 0.5);
+      }
+      if (nodes.arpGain) {
+        nodes.arpGain.gain.setTargetAtTime(0.018 * (1 - drama.dread * 0.7), t, 0.5);
+      }
+    },
+
+    /** Whiteout + left-side detonation */
+    flashBang() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      fadeMaster(muted ? 0 : 0.95, 0.05);
+
+      // Noise blast
+      const n = Math.floor(ctx.sampleRate * 0.55);
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) {
+        const env = Math.exp(-i / (n * 0.18));
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1200, t);
+      bp.frequency.exponentialRampToValueAtTime(180, t + 0.45);
+      bp.Q.value = 0.6;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.85, t + 0.02);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      src.connect(bp);
+      bp.connect(ng);
+      ng.connect(nodes.comp);
+      src.start(t);
+      src.stop(t + 0.75);
+
+      // Sub boom (left-feeling via low thump)
+      for (const [freq, dur, peak, delay] of [
+        [48, 0.9, 0.9, 0],
+        [36, 1.2, 0.7, 0.04],
+        [90, 0.35, 0.45, 0.08],
+      ]) {
+        tone(freq, 'sine', t + delay, dur, peak, nodes.comp, freq * 0.35);
+      }
+    },
+
+    /** Soft wipeout onset — score becomes a disaster */
+    doomRise() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const bus = ensureDramaBus();
+      const t = ctx.currentTime;
+
+      fadeMaster(muted ? 0 : 0.85, 0.4);
+      if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.01, t, 0.2);
+      if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.004, t, 0.2);
+      if (nodes.rainGain) {
+        nodes.rainGain.gain.setTargetAtTime(
+          district.rainGain === 0 ? 0.0001 : 0.01,
+          t,
+          0.2,
+        );
+      }
+
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), t);
+      bus.gain.linearRampToValueAtTime(0.95, t + 1.2);
+
+      // Rising alarm scream
+      const alarm = ctx.createOscillator();
+      alarm.type = 'sawtooth';
+      alarm.frequency.setValueAtTime(110, t);
+      alarm.frequency.exponentialRampToValueAtTime(440, t + 3.2);
+      const af = ctx.createBiquadFilter();
+      af.type = 'bandpass';
+      af.frequency.setValueAtTime(400, t);
+      af.frequency.exponentialRampToValueAtTime(1800, t + 3);
+      af.Q.value = 4;
+      const ag = ctx.createGain();
+      ag.gain.setValueAtTime(0.0001, t);
+      ag.gain.exponentialRampToValueAtTime(0.2, t + 0.4);
+      ag.gain.linearRampToValueAtTime(0.28, t + 2.5);
+      alarm.connect(af);
+      af.connect(ag);
+      ag.connect(bus.gain);
+      alarm.start(t);
+      alarm.stop(t + 4.5);
+      bus.oscs.push(alarm);
+
+      // Choir-ish stacked fifths climbing
+      for (const [i, freq] of [82.41, 123.47, 164.81, 246.94].entries()) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(freq, t);
+        o.frequency.exponentialRampToValueAtTime(freq * 1.5, t + 3.5);
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(600 + i * 120, t);
+        f.frequency.linearRampToValueAtTime(2200, t + 3);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.1, t + 0.3 + i * 0.08);
+        o.connect(f);
+        f.connect(g);
+        g.connect(bus.gain);
+        o.start(t);
+        o.stop(t + 5);
+        bus.oscs.push(o);
+      }
+
+      // Impact hits
+      for (const delay of [0, 0.9, 1.7]) {
+        tone(48, 'sine', t + delay, 0.55, 0.7, bus.gain, 22);
+        tone(36, 'triangle', t + delay + 0.02, 0.4, 0.35, bus.gain, 20);
+      }
+    },
+
+    /** Hard lurch — everything peaks */
+    doomPeak() {
+      if (muted) return;
+      ensure();
+      if (ctx.state === 'suspended') ctx.resume();
+      const bus = ensureDramaBus();
+      const t = ctx.currentTime;
+
+      fadeMaster(muted ? 0 : 0.95, 0.15);
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), t);
+      bus.gain.linearRampToValueAtTime(1.15, t + 0.2);
+
+      // Chaos noise bed
+      const n = Math.floor(ctx.sampleRate * 2.2);
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) {
+        data[i] = (Math.random() * 2 - 1) * (0.3 + (i / n) * 0.7);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(200, t);
+      bp.frequency.exponentialRampToValueAtTime(2400, t + 1.8);
+      bp.Q.value = 0.7;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.35, t + 0.15);
+      ng.gain.linearRampToValueAtTime(0.45, t + 1.5);
+      src.connect(bp);
+      bp.connect(ng);
+      ng.connect(bus.gain);
+      src.start(t);
+      src.stop(t + 2.2);
+
+      for (const delay of [0, 0.35, 0.7, 1.1]) {
+        tone(90, 'sawtooth', t + delay, 0.25, 0.4, bus.gain, 40);
+      }
+    },
+
+    /** End screen — let the disaster die out */
+    doomEnd() {
+      stopDrama(true);
+      if (!ctx || !nodes) return;
+      const t = ctx.currentTime;
+      if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.0001, t, 0.4);
+      if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.0001, t, 0.4);
+      fadeMaster(0, 2.2);
+      running = false;
+    },
+
+    clearDrama() {
+      stopDrama(false);
     },
   };
 }

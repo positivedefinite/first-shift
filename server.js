@@ -25,19 +25,26 @@ const MIME = {
 };
 
 function safeJoin(root, reqPath) {
-  const decoded = decodeURIComponent(reqPath.split('?')[0]);
+  const decoded = decodeURIComponent((reqPath || '/').split('?')[0]);
   const cleaned = path.normalize(decoded).replace(/^(\.\.[/\\])+/, '');
   const full = path.join(root, cleaned);
   if (!full.startsWith(root)) return null;
   return full;
 }
 
-function send(res, status, body, type) {
+function send(res, status, body, type, extra = {}) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body ?? '');
+  // Content-Length required — WhatsApp OG crawler chokes on chunked bodies
   res.writeHead(status, {
     'Content-Type': type || 'text/plain; charset=utf-8',
-    'Cache-Control': status === 200 && type?.includes('html') ? 'no-cache' : 'public, max-age=31536000',
+    'Content-Length': buf.length,
+    'Cache-Control':
+      status === 200 && type?.includes('html')
+        ? 'no-cache'
+        : 'public, max-age=86400',
+    ...extra,
   });
-  res.end(body);
+  res.end(buf);
 }
 
 function sendFile(res, filePath) {
@@ -47,12 +54,19 @@ function sendFile(res, filePath) {
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
-    send(res, 200, data, MIME[ext] || 'application/octet-stream');
+    const type = MIME[ext] || 'application/octet-stream';
+    const extra = {};
+    if (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp') {
+      extra['Cache-Control'] = 'public, max-age=604800';
+      extra['Accept-Ranges'] = 'bytes';
+    }
+    send(res, 200, data, type, extra);
   });
 }
 
 const server = http.createServer((req, res) => {
-  const urlPath = req.url === '/' ? '/index.html' : req.url || '/';
+  const raw = req.url || '/';
+  const urlPath = raw.split('?')[0] === '/' ? '/index.html' : raw;
   let filePath = safeJoin(DIST, urlPath);
 
   if (!filePath) {

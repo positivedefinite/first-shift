@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { createWorld } from './world.js';
-import { createPlayer } from './player.js';
+import { createPlayer, BOOST_SPEED } from './player.js';
 import { createRain } from './rain.js';
 import { createMinimap } from './minimap.js';
 import { createMusic } from './music.js';
@@ -13,6 +13,7 @@ import {
   onLevelWon,
   getBest,
   setBest,
+  resetRideHistory,
 } from './levels.js';
 import { VERSION } from './version.js';
 import { toggleQuality, qualityPrefs, qualityLabel } from './quality.js';
@@ -24,6 +25,9 @@ const els = {
   fps: document.getElementById('fps'),
   tunnel: document.getElementById('tunnel'),
   blood: document.getElementById('blood'),
+  flashbang: document.getElementById('flashbang'),
+  blastLeft: document.getElementById('blastLeft'),
+  shockwave: document.getElementById('shockwave'),
   thought: document.getElementById('thought'),
   overlay: document.getElementById('overlay'),
   end: document.getElementById('end'),
@@ -38,6 +42,7 @@ const els = {
   debriefMeta: document.getElementById('debriefMeta'),
   startBtn: document.getElementById('startBtn'),
   qualityBtn: document.getElementById('qualityBtn'),
+  resetBtn: document.getElementById('resetBtn'),
   retryBtn: document.getElementById('retryBtn'),
   nextBtn: document.getElementById('nextBtn'),
   mapBtn: document.getElementById('mapBtn'),
@@ -153,18 +158,39 @@ const HIT_THOUGHTS = [
 
 /** Way Back — drifting mind before the fall. No tunnel shade. */
 const RIDE_THOUGHTS = [
+  // boss / work
   'Boss said "quick drop". Nothing with him is quick.',
   'If the boss texts again I\'m throwing the phone in the canal.',
   'He\'ll still dock me for being three minutes late. Bastard.',
+  'Should\'ve said no to this run. Too late now.',
+  'Tips don\'t cover the tires. Or the attitude.',
+  'One more job. That\'s what I said at six.',
+  // her
   'Wonder if she\'s still mad about last night…',
   'She\'ll be up. She always waits. Feels bad sometimes.',
   'Tell her I\'m almost home. Almost. Kind of.',
+  'She packed lunch. I left it on the counter. Classic.',
+  'Hope she\'s not scrolling my location again.',
+  'Dinner\'s cold by now. I\'ll make it up somehow.',
+  // bike / home
   'Carb still sticks on the bike. One more weekend. Promise.',
   'Left the wrench on the kitchen table again. She hates that.',
   'That old motorbike\'s going to run. Has to. After tonight.',
   'Maybe take her out on the bike when it\'s fixed. If it ever is.',
+  'Chain needs oil. Everything needs oil.',
+  'Garage light\'s still on. Waste of power. Waste of a night.',
+  // day leftovers
   'Boss. Her. The bike. Same three problems every night.',
   'Home. Oil on my hands. Her on the couch. That\'s the plan.',
+  'Legs hurt. Phone buzzes. Same shift as always.',
+  'Did I lock the flat? …yeah. Pretty sure. Mostly sure.',
+  'Rain stopped. At least something went right.',
+  // moon — clear sky on the span
+  'Wow… look at that moon.',
+  'Moon\'s huge tonight. Almost red.',
+  'Never noticed the moon from the city like this.',
+  'Red moon. Pretty. Kind of eerie.',
+  'Clear sky for once. Moon\'s putting on a show.',
 ];
 
 const rideMind = { nextAt: 0, queue: [], i: 0 };
@@ -179,9 +205,18 @@ function shuffleCopy(arr) {
 }
 
 function resetRideThoughts() {
-  rideMind.queue = shuffleCopy(RIDE_THOUGHTS);
+  const pool = shuffleCopy(RIDE_THOUGHTS);
+  // Fresh subset each run — replays don't recite the same script
+  const n = 5 + Math.floor(Math.random() * 5); // 5–9
+  rideMind.queue = pool.slice(0, Math.min(n, pool.length));
+  // Guarantee one moon line somewhere in the early ride
+  const moons = RIDE_THOUGHTS.filter((l) => /moon/i.test(l));
+  if (moons.length && !rideMind.queue.some((l) => /moon/i.test(l))) {
+    const slot = Math.floor(Math.random() * rideMind.queue.length);
+    rideMind.queue[slot] = moons[Math.floor(Math.random() * moons.length)];
+  }
   rideMind.i = 0;
-  rideMind.nextAt = 110 + Math.random() * 90;
+  rideMind.nextAt = 70 + Math.random() * 140;
 }
 
 function updateRideThoughts() {
@@ -189,13 +224,13 @@ function updateRideThoughts() {
   if (slip.active) return;
   if (thoughtTimer > 0) return;
   const killAt = level.slipAt ?? level.goal;
-  // Quiet before the wipeout so NOOOOO owns the beat
-  if (state.distance >= killAt - 90) return;
+  // Quiet once the sky starts lying
+  if (state.distance >= killAt * 0.35) return;
   if (state.distance < rideMind.nextAt) return;
   const line = rideMind.queue[rideMind.i++];
   if (!line) return;
-  showThought(line, 3.6);
-  rideMind.nextAt = state.distance + 130 + Math.random() * 150;
+  showThought(line, 3.2 + Math.random() * 1.2);
+  rideMind.nextAt = state.distance + 100 + Math.random() * 180;
 }
 
 function showThought(line, dur = 4.2) {
@@ -404,55 +439,250 @@ function updateCall(dt) {
 }
 
 /** Peak possible speed (boost × handling) — meter full scale */
-const SPEED_CEIL = 26 * 1.38;
+/** Meter full = boost top — must match player hard cap */
+const SPEED_CEIL = BOOST_SPEED;
 
 let clockBumpTimer = 0;
 let bloomKick = 0;
 /** Hit tunnel-vision leftover — don't clear if phone talk still owns the shade */
 let hitTunnelT = 0;
-const slip = { active: false, t: 0, phase: 'lurch', cracked: false };
+/**
+ * Way Back arc (distance vs slipAt):
+ * 0–28% calm · 28% one star · 48% weird · build stars/cruise/shake · slipAt flashbang → death
+ */
+const STAR_LINES = [
+  'what the fuck is that?!',
+  'was that a star… falling?',
+  'they\'re everywhere—',
+  'okay what the fuck',
+  'that one almost hit the bridge',
+  'don\'t look up. look up.',
+  'I better hurry...',
+  'this sky is wrong',
+  'why is the moon that color—',
+  'nope. nope nope nope.',
+  'keep riding. just keep riding.',
+  'that was way too close',
+];
+const spanFate = {
+  omenStarted: false,
+  omenActive: false,
+  omenT: 0,
+  meteorTier: 0,
+  nextStarLineAt: 0,
+  starQueue: [],
+  starLineI: 0,
+  impacting: false,
+  impactT: 0,
+};
+const slip = { active: false, t: 0, phase: 'soft', cracked: false, peaked: false };
+
+function resetSpanFate() {
+  spanFate.omenStarted = false;
+  spanFate.omenActive = false;
+  spanFate.omenT = 0;
+  spanFate.meteorTier = 0;
+  spanFate.nextStarLineAt = 0;
+  spanFate.starQueue = shuffleCopy(STAR_LINES);
+  spanFate.starLineI = 0;
+  spanFate.impacting = false;
+  spanFate.impactT = 0;
+  els.tunnel?.classList.remove('soft');
+  els.flashbang?.classList.remove('on');
+  els.blastLeft?.classList.remove('on');
+  els.shockwave?.classList.remove('on');
+  world.setMeteorIntensity?.(0);
+  world.setMeteorProximity?.(0);
+  music.clearDrama?.();
+}
 
 function flashHitTunnel() {
   hitTunnelT = 1.15;
   els.tunnel?.classList.add('on');
+  els.tunnel?.classList.remove('soft');
 }
 
 function updateHitTunnel(dt) {
   if (hitTunnelT <= 0) return;
   hitTunnelT = Math.max(0, hitTunnelT - dt);
-  if (hitTunnelT <= 0 && call.phase !== 'talk' && !slip.active) {
-    els.tunnel?.classList.remove('on');
+  if (
+    hitTunnelT <= 0 &&
+    call.phase !== 'talk' &&
+    !slip.active &&
+    !spanFate.omenActive
+  ) {
+    els.tunnel?.classList.remove('on', 'soft');
   }
 }
 
-function beginSlip() {
-  if (slip.active || state.mode !== 'play') return;
-  slip.active = true;
-  slip.t = 0;
-  slip.phase = 'lurch';
-  slip.cracked = false;
+function setMeteorTier(tier) {
+  if (tier === spanFate.meteorTier) return;
+  spanFate.meteorTier = tier;
+  world.setMeteorIntensity?.(tier);
+}
+
+function beginOmen() {
+  spanFate.omenStarted = true;
+  spanFate.omenActive = true;
+  spanFate.omenT = 0;
+  spanFate.nextStarLineAt = state.distance + 40;
+  spanFate.starLineI = 0;
+  hitTunnelT = 0;
+  els.tunnel?.classList.add('on', 'soft');
+  showThought('it feels weird...', 2.8);
+  state.shake = 0.28;
+  els.status.textContent = '—';
+  setMeteorTier(2);
+  music.omenSting();
+}
+
+function beginImpact() {
+  if (spanFate.impacting || slip.active) return;
+  spanFate.impacting = true;
+  spanFate.impactT = 0;
+  spanFate.omenActive = false;
   state.mode = 'slip';
   resetCall();
-  player.startLurch();
-  music.stop(false);
+  player.lockFullSpeed();
   els.hud.classList.remove('live');
-  els.tunnel?.classList.add('on');
+  els.tunnel?.classList.remove('on', 'soft');
   els.blood?.classList.remove('on');
-  showThought('NOOOOO!!!!', 7.5);
+  els.flashbang?.classList.remove('on');
+  els.blastLeft?.classList.remove('on');
+  els.shockwave?.classList.remove('on');
+  void els.flashbang?.offsetWidth;
+  void els.blastLeft?.offsetWidth;
+  void els.shockwave?.offsetWidth;
+  els.flashbang?.classList.add('on');
+  els.blastLeft?.classList.add('on');
+  els.shockwave?.classList.add('on');
+  world.flashLeftBlast?.(player.group.position.z);
+  music.flashBang?.();
+  showThought('NOOOOO!!!!', 8);
   els.status.textContent = '—';
-  state.shake = 0.75;
+  state.shake = 1.25;
+  if (renderer) renderer.toneMappingExposure = 3.8;
+  bloomKick = 1.1;
+}
+
+function beginSlip() {
+  if (slip.active) return;
+  slip.active = true;
+  slip.t = 0;
+  slip.phase = 'soft';
+  slip.cracked = false;
+  slip.peaked = false;
+  state.mode = 'slip';
+  player.lockFullSpeed();
+  music.doomRise();
+  els.tunnel?.classList.add('on', 'soft');
+  els.blood?.classList.remove('on');
+  state.shake = 0.5;
+}
+
+function updateSpanFate(dt) {
+  if (!level.finale) return;
+
+  // Impact hold → then death sequence
+  if (spanFate.impacting && !slip.active) {
+    spanFate.impactT += dt;
+    updateThought(dt);
+    const result = player.update(dt, {
+      steer: readInput().steer * 0.25,
+      throttle: 1,
+      boost: false,
+    });
+    state.distance += result.forward * dt;
+    world.update(dt, player, state.distance, clock.elapsedTime);
+    // Blast wave punch — camera shove then settle
+    const wave = Math.min(1, spanFate.impactT / 0.45);
+    state.shake = 0.85 + (1 - wave) * 0.55 + Math.abs(Math.sin(spanFate.impactT * 16)) * 0.25;
+    if (renderer) {
+      renderer.toneMappingExposure = THREE.MathUtils.damp(
+        renderer.toneMappingExposure,
+        1.05,
+        1.8,
+        dt,
+      );
+    }
+    updateCamera(dt);
+    // Hold long enough to read shockwave + debris before tumble
+    if (spanFate.impactT >= 1.35) beginSlip();
+    return;
+  }
+
+  if (state.mode !== 'play' || slip.active) return;
+
+  const slipAt = level.slipAt ?? level.goal;
+  const p = state.distance / slipAt;
+  const oneStarAt = slipAt * 0.28;
+  const omenAt = slipAt * 0.48;
+
+  // Stars escalate + creep closer over the whole late ride
+  if (p < 0.28) setMeteorTier(0);
+  else if (!spanFate.omenStarted) setMeteorTier(1);
+  else if (p < 0.72) setMeteorTier(2);
+  else setMeteorTier(3);
+
+  const prox = p < 0.28 ? 0 : Math.max(0, Math.min(1, (p - 0.28) / 0.72));
+  world.setMeteorProximity?.(prox * prox); // ease-in — late stretch gets scary close
+
+  if (!spanFate.omenStarted && state.distance >= omenAt) {
+    beginOmen();
+  }
+
+  // After first star, seed a quiet beat before weird
+  if (
+    !spanFate.omenStarted &&
+    state.distance >= oneStarAt &&
+    spanFate.nextStarLineAt === 0
+  ) {
+    spanFate.nextStarLineAt = oneStarAt + 80;
+  }
+
+  if (spanFate.omenStarted) {
+    const build = (state.distance - omenAt) / Math.max(1, slipAt - omenAt);
+    const u = Math.max(0, Math.min(1, build));
+    // Gradual full-speed — throttle dies as cruise rises
+    player.setCruise(0.2 + u * 0.8);
+    music.setDread(Math.min(1, u * 0.75));
+    // Mild growing shake (not violent yet)
+    state.shake = 0.08 + u * 0.38 + Math.abs(Math.sin(state.distance * 0.04)) * 0.06 * u;
+
+    if (thoughtTimer <= 0 && state.distance >= spanFate.nextStarLineAt) {
+      const q = spanFate.starQueue;
+      const line = q[spanFate.starLineI % q.length];
+      spanFate.starLineI++;
+      showThought(line, 2.8 + Math.random() * 1.4);
+      spanFate.nextStarLineAt = state.distance + 70 + Math.random() * 140;
+    }
+  }
+
+  if (!spanFate.omenActive) return;
+  spanFate.omenT += dt;
+  state.shake = 0.18 + Math.abs(Math.sin(spanFate.omenT * 7)) * 0.16;
+  if (spanFate.omenT >= 1.6) {
+    spanFate.omenActive = false;
+    els.tunnel?.classList.remove('on', 'soft');
+  }
 }
 
 function showFinale() {
   slip.active = false;
   state.mode = 'win';
   clearThought();
+  music.doomEnd();
   const score = state.distance;
   const best = setBest(level.id, score);
   onLevelWon(level.id);
 
   els.blood?.classList.remove('on');
-  els.tunnel?.classList.remove('on');
+  els.tunnel?.classList.remove('on', 'soft');
+  els.flashbang?.classList.remove('on');
+  els.blastLeft?.classList.remove('on');
+  els.shockwave?.classList.remove('on');
+  world.setMeteorIntensity?.(0);
+  world.setMeteorProximity?.(0);
   els.end.classList.remove('hidden');
   els.end.classList.add('win-debrief', 'finale');
   els.debrief.classList.remove('hidden');
@@ -478,31 +708,72 @@ function updateSlip(dt) {
   slip.t += dt;
   updateThought(dt);
 
-  if (slip.phase === 'lurch') {
-    // Uncontrolled weave — player feels it, cannot fight it
-    const steer =
-      Math.sin(slip.t * 4.8) * 1.35 + Math.sin(slip.t * 9.2) * 0.55 + Math.sin(slip.t * 2.1) * 0.4;
-    const result = player.update(dt, { steer, throttle: 0.4, boost: false });
+  // Soft onset — slight shade, steer still yours, growing wobble
+  if (slip.phase === 'soft') {
+    const input = readInput();
+    const wobble =
+      Math.sin(slip.t * 3.4) * (0.25 + slip.t * 0.18) +
+      Math.sin(slip.t * 7.1) * (0.1 + slip.t * 0.08);
+    const result = player.update(dt, {
+      steer: input.steer + wobble,
+      throttle: 1,
+      boost: false,
+    });
     state.distance += result.forward * dt;
     world.update(dt, player, state.distance, clock.elapsedTime);
-    state.shake = 0.55 + Math.abs(Math.sin(slip.t * 7.5)) * 0.55;
+    state.shake = 0.35 + slip.t * 0.12 + Math.abs(Math.sin(slip.t * 6)) * 0.2;
     if (renderer) {
       renderer.toneMappingExposure = THREE.MathUtils.damp(
         renderer.toneMappingExposure,
-        0.85,
-        2.5,
+        0.92,
+        2,
         dt,
       );
     }
-    bloomPass.strength.value = 0.22;
+    bloomPass.strength.value = 0.2;
     updateCamera(dt);
 
-    if (slip.t >= 2.65) {
+    if (slip.t >= 2.8) {
+      slip.phase = 'hard';
+      els.tunnel?.classList.remove('soft');
+      els.tunnel?.classList.add('on');
+      player.startLurch();
+      state.shake = 1.1;
+      if (!slip.peaked) {
+        slip.peaked = true;
+        music.doomPeak();
+      }
+    }
+    return;
+  }
+
+  // Hard — full shade, no control, weave goes wild fast
+  if (slip.phase === 'hard') {
+    const hardT = slip.t - 2.8;
+    const steer =
+      Math.sin(hardT * 5.5) * (1.1 + hardT * 0.55) +
+      Math.sin(hardT * 11) * (0.45 + hardT * 0.25);
+    const result = player.update(dt, { steer, throttle: 0.4, boost: false });
+    state.distance += result.forward * dt;
+    world.update(dt, player, state.distance, clock.elapsedTime);
+    state.shake = 0.85 + Math.abs(Math.sin(hardT * 9)) * 0.7;
+    if (renderer) {
+      renderer.toneMappingExposure = THREE.MathUtils.damp(
+        renderer.toneMappingExposure,
+        0.7,
+        3,
+        dt,
+      );
+    }
+    bloomPass.strength.value = 0.16;
+    updateCamera(dt);
+
+    if (hardT >= 1.65) {
       slip.phase = 'tumble';
       player.startTumble();
       music.boneCrack();
       els.blood?.classList.add('on');
-      state.shake = 1.35;
+      state.shake = 1.4;
     }
     return;
   }
@@ -510,18 +781,18 @@ function updateSlip(dt) {
   // Slow tumble → red fade → still
   player.update(dt, { steer: 0, throttle: 0, boost: false });
   world.update(0, player, state.distance, clock.elapsedTime);
-  const tumbleT = slip.t - 2.65;
-  state.shake = Math.max(0.25, 1.35 - tumbleT * 0.22);
+  const tumbleT = slip.t - 2.8 - 1.65;
+  state.shake = Math.max(0.22, 1.4 - tumbleT * 0.18);
   if (renderer) {
-    renderer.toneMappingExposure = Math.max(0.18, 1.05 - tumbleT * 0.16);
+    renderer.toneMappingExposure = Math.max(0.16, 1.05 - tumbleT * 0.14);
   }
-  bloomPass.strength.value = 0.12;
+  bloomPass.strength.value = 0.1;
   updateCamera(dt);
-  if (!slip.cracked && tumbleT > 0.85) {
+  if (!slip.cracked && tumbleT > 1.1) {
     slip.cracked = true;
     music.boneCrack();
   }
-  if (slip.t > 6.8) showFinale();
+  if (slip.t > 9.2) showFinale();
 }
 
 function pulseEvent(kind) {
@@ -735,10 +1006,11 @@ function renderLevelGrid() {
 function showMap() {
   slip.active = false;
   els.blood?.classList.remove('on');
-  els.tunnel?.classList.remove('on');
+  els.tunnel?.classList.remove('on', 'soft');
   els.end.classList.remove('finale');
   state.mode = 'title';
   resetCall();
+  resetSpanFate();
   els.end.classList.add('hidden');
   els.end.classList.remove('win-debrief');
   els.debrief.classList.add('hidden');
@@ -757,6 +1029,7 @@ function startLevel(id) {
   applyAtmosphere(level);
   resetCall();
   resetRideThoughts();
+  resetSpanFate();
 
   state.mode = 'play';
   state.time = level.startTime;
@@ -777,7 +1050,7 @@ function startLevel(id) {
 
   slip.active = false;
   els.blood?.classList.remove('on');
-  els.tunnel?.classList.remove('on');
+  els.tunnel?.classList.remove('on', 'soft');
   els.overlay.classList.add('hidden');
   els.end.classList.add('hidden');
   els.end.classList.remove('win-debrief', 'finale');
@@ -864,6 +1137,19 @@ els.qualityBtn?.addEventListener('click', () => {
   }
 });
 if (els.qualityBtn) els.qualityBtn.textContent = qualityLabel();
+
+els.resetBtn?.addEventListener('click', () => {
+  const ok = confirm(
+    'Reset ride history?\n\nThis clears unlocked levels and best distances. Graphics settings stay.',
+  );
+  if (!ok) return;
+  resetRideHistory();
+  selectedLevelId = 1;
+  level = getLevel(1);
+  renderLevelGrid();
+  world.setLevel(level);
+  applyAtmosphere(level);
+});
 els.retryBtn.addEventListener('click', () => startLevel(level.id));
 els.nextBtn.addEventListener('click', () => {
   const next = Math.min(level.id + 1, LEVELS.length);
@@ -1050,7 +1336,8 @@ async function init() {
     const dt = Math.min(rawDt, 0.05);
 
     if (state.mode === 'slip') {
-      updateSlip(dt);
+      if (spanFate.impacting && !slip.active) updateSpanFate(dt);
+      else updateSlip(dt);
     } else if (state.mode === 'play') {
       if (inputLock > 0) inputLock = Math.max(0, inputLock - dt);
       const input = readInput();
@@ -1070,6 +1357,7 @@ async function init() {
         els.status.textContent = 'stalled — hold W to push off';
       }
 
+      updateSpanFate(dt);
       updateRideThoughts();
 
       // Always real dt — vans/walkers keep moving when you stall (scroll uses player.speed)
@@ -1128,7 +1416,7 @@ async function init() {
       }
 
       if (level.finale && state.distance >= (level.slipAt ?? level.goal)) {
-        beginSlip();
+        beginImpact();
       } else if (!level.finale && state.distance >= level.goal) {
         endRun(true);
       } else if (state.time <= 0) {

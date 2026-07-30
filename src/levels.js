@@ -261,10 +261,10 @@ export const LEVELS = [
     debriefReceiver: 'NO ONE',
     debriefQuote: 'This night did not go as you planned.',
     finale: true,
-    // HUD / radar sell a long haul — slip kills at slipAt
+    // HUD / radar sell a long haul — impact / slip at slipAt
     goal: 5200,
-    slipAt: 1000,
-    startTime: 125,
+    slipAt: 1600,
+    startTime: 195,
     obstacleStart: 120,
     obstacleGapEarly: [70, 40],
     obstacleGapLate: [90, 50],
@@ -345,4 +345,12 @@ export function setBest(id, dist) {
     return dist;
   }
   return prev;
+}
+
+/** Wipe unlocks + best distances. Keeps graphics prefs. */
+export function resetRideHistory() {
+  localStorage.removeItem(UNLOCK_KEY);
+  for (const lv of LEVELS) {
+    localStorage.removeItem(BEST_PREFIX + lv.id);
+  }
 }

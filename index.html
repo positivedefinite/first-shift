@@ -16,17 +16,29 @@
       content="A rainy night bike run. One bag. Five districts. Get it there before the clock does."
     />
     <meta property="og:url" content="https://first-shift-842d87ea64cb.herokuapp.com/" />
-    <meta property="og:image" content="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg" />
+    <meta
+      property="og:image"
+      content="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg?v=25"
+    />
+    <meta
+      property="og:image:secure_url"
+      content="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg?v=25"
+    />
     <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="FIRST SHIFT — a rainy night bike run" />
+    <link rel="image_src" href="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg?v=25" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="FIRST SHIFT" />
     <meta
       name="twitter:description"
       content="A rainy night bike run. One bag. Five districts. Get it there before the clock does."
     />
-    <meta name="twitter:image" content="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg" />
+    <meta
+      name="twitter:image"
+      content="https://first-shift-842d87ea64cb.herokuapp.com/og.jpg?v=25"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -40,6 +52,9 @@
     <div id="fps" class="fps ok" aria-hidden="true">-- FPS</div>
     <div id="tunnel" class="tunnel" aria-hidden="true"></div>
     <div id="blood" class="blood" aria-hidden="true"></div>
+    <div id="flashbang" class="flashbang" aria-hidden="true"></div>
+    <div id="blastLeft" class="blast-left" aria-hidden="true"></div>
+    <div id="shockwave" class="shockwave" aria-hidden="true"></div>
     <p id="thought" class="thought" aria-live="polite"></p>
     <div id="hud">
       <div class="hud-top">
@@ -96,6 +111,7 @@
 
       <button id="startBtn" type="button">PUNCH IN</button>
       <button id="qualityBtn" type="button" class="ghost menu-opt">GRAPHICS · HIGH</button>
+      <button id="resetBtn" type="button" class="ghost menu-opt menu-reset">RESET RIDES</button>
       <p class="hint">1–5 pick level · hold W / ↑ to pedal · SPACE boost · M mute</p>
       <p id="menuVersion" class="menu-version" aria-hidden="true"></p>
     </div>

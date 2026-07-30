@@ -3,18 +3,23 @@ import * as THREE from 'three/webgpu';
 const ROAD_HALF = 3.35;
 /** Spawn lane — right side of road (avoids centerline glitch feel) */
 const START_X = 1.85;
-const MAX_SPEED = 20;
-const BOOST_SPEED = 26;
+/** Absolute top speed — also the speed-meter ceiling. Nothing may exceed this. */
+export const BOOST_SPEED = 26;
+/** Pedal + Space alone — need a powerup to break past this (70% of meter). */
+const SOLO_SPEED = BOOST_SPEED * 0.7;
+/** With handling pickup: pedal ceiling before Space (still ≤ BOOST_SPEED). */
+const MAX_SPEED = BOOST_SPEED * 0.88;
 const STOP_SPEED = 0.35;
 const COAST_DRAG = 7.5;
 const PEDAL_ACCEL = 8.5;
 const BOOST_ACCEL = 13;
 const ANGER_COUNT = 10;
-/** Good handling pickup: ramp +25% over 1s, ease back over 3s */
-const HANDLING_PEAK = 1.38;
-const HANDLING_RAMP = 1;
-const HANDLING_FALL = 3.4;
+/** Good handling pickup: grip/accel bump + unlocks the top of the meter */
+const HANDLING_PEAK = 1.12;
+const HANDLING_RAMP = 0.6;
+const HANDLING_FALL = 2.4;
 const HANDLING_TOTAL = HANDLING_RAMP + HANDLING_FALL;
+const PICKUP_SPEED_KICK = 2.2;
 
 export function createPlayer(scene) {
   const group = new THREE.Group();
@@ -227,6 +232,11 @@ export function createPlayer(scene) {
     onCall: false, // girlfriend call — forced slow
     scrapes: 0, // run-wide bump count — each hit slows harder
     tumbling: false,
+    lurching: false,
+    /** Way Back — forced full speed, steer still works */
+    speedLocked: false,
+    /** 0..1 ramp toward BOOST_SPEED; kills throttle agency as it rises */
+    cruiseFactor: 0,
 
     // world.js still reads this name for brief post-hit grace
     get invuln() {
@@ -268,6 +278,8 @@ export function createPlayer(scene) {
       api.scrapes = 0;
       api.tumbling = false;
       api.lurching = false;
+      api.speedLocked = false;
+      api.cruiseFactor = 0;
       api.startX = START_X;
       trail.material.opacity = 0;
       group.visible = true;
@@ -280,9 +292,13 @@ export function createPlayer(scene) {
       }
     },
 
-    /** Start / refresh good-handling speed envelope */
+    /** Start / refresh good-handling — small speed kick, never past BOOST_SPEED */
     goodHandling() {
-      api.handlingT = 0;
+      // Jump straight to peak so a restack doesn't dip the mult to 1.0
+      api.handlingT = HANDLING_RAMP;
+      api.speed = Math.min(BOOST_SPEED, api.speed + PICKUP_SPEED_KICK);
+      api.boostEnergy = Math.min(1, api.boostEnergy + 0.2);
+      api.stalled = false;
     },
 
     /** Obstacle hit — no clock penalty; speed slam that stacks each scrape */
@@ -297,18 +313,39 @@ export function createPlayer(scene) {
       burstAnger();
     },
 
+    /** Way Back — 0..1 gradual pull to full boost; steer still works */
+    setCruise(factor) {
+      api.cruiseFactor = Math.max(0, Math.min(1, factor));
+      api.stalled = false;
+      api.onCall = false;
+      if (api.cruiseFactor >= 0.98) {
+        api.speedLocked = true;
+        api.speed = BOOST_SPEED;
+        api.boostEnergy = 1;
+      } else {
+        api.speedLocked = false;
+      }
+    },
+
+    /** Way Back — throttle/boost dead; bike holds full speed */
+    lockFullSpeed() {
+      api.setCruise(1);
+    },
+
     /** Way Back — lose control but still rolling */
     startLurch() {
+      api.speedLocked = false;
       api.lurching = true;
       api.tumbling = false;
       api.stalled = false;
       api.onCall = false;
-      api.speed = Math.max(api.speed, 12);
+      api.speed = Math.max(api.speed, BOOST_SPEED * 0.85);
       burstAnger();
     },
 
     /** Way Back finale — wipeout */
     startTumble() {
+      api.speedLocked = false;
       api.lurching = false;
       api.tumbling = true;
       api.stalled = false;
@@ -406,23 +443,45 @@ export function createPlayer(scene) {
         api.handlingT += dt;
         if (api.handlingT >= HANDLING_TOTAL) api.handlingT = -1;
       }
+      const powered = api.handlingT >= 0;
       const hMult = api.handlingMult() * api.scrapeMult();
-      const maxSpd = MAX_SPEED * hMult;
-      const boostSpd = BOOST_SPEED * hMult;
+      const scrape = api.scrapeMult();
+      // Solo: hard 70% ceiling. Powerup unlocks the top of the meter.
+      const soloCap = SOLO_SPEED * scrape;
+      const maxSpd = powered
+        ? Math.min(BOOST_SPEED, MAX_SPEED * hMult)
+        : soloCap;
+      const boostSpd = powered
+        ? Math.min(BOOST_SPEED, BOOST_SPEED * scrape)
+        : soloCap;
       const pedalAcc = PEDAL_ACCEL * hMult;
-      const boostAcc = BOOST_ACCEL * hMult;
+      const boostAcc = BOOST_ACCEL * (1 + (api.handlingMult() - 1) * 0.5) * scrape;
 
       const pedaling = input.throttle > 0;
       const braking = input.throttle < 0;
-      const boosting = pedaling && input.boost && api.boostEnergy > 0.05;
+      let boosting = pedaling && input.boost && api.boostEnergy > 0.05;
 
-      if (boosting) {
+      if (api.cruiseFactor > 0.05 || api.speedLocked) {
+        // Gradual / full cruise — no throttle agency, steer still live
+        const target = BOOST_SPEED;
+        const pull = 1.1 + api.cruiseFactor * 4.5;
+        api.speed += (target - api.speed) * Math.min(1, dt * pull);
+        if (api.cruiseFactor > 0.35) {
+          api.speed = Math.max(api.speed, target * (0.55 + api.cruiseFactor * 0.45));
+        }
+        if (api.speedLocked || api.cruiseFactor >= 0.98) api.speed = target;
+        api.boostEnergy = 1;
+        api.stalled = false;
+        boosting = false;
+        trail.material.opacity = 0.2 + api.cruiseFactor * 0.35;
+      } else if (boosting) {
         api.boostEnergy = Math.max(0, api.boostEnergy - dt * 0.45);
-        api.speed = Math.min(boostSpd, api.speed + boostAcc * dt);
+        // Only accelerate up to cap — never clamp an overspeed kick downward
+        if (api.speed < boostSpd) api.speed = Math.min(boostSpd, api.speed + boostAcc * dt);
         trail.material.opacity = 0.55;
       } else if (pedaling) {
         api.boostEnergy = Math.min(1, api.boostEnergy + dt * 0.18);
-        api.speed = Math.min(maxSpd, api.speed + pedalAcc * dt);
+        if (api.speed < maxSpd) api.speed = Math.min(maxSpd, api.speed + pedalAcc * dt);
         trail.material.opacity *= Math.exp(-4 * dt);
       } else if (braking) {
         api.speed = Math.max(0, api.speed + input.throttle * 28 * dt);
@@ -434,20 +493,35 @@ export function createPlayer(scene) {
         trail.material.opacity *= Math.exp(-6 * dt);
       }
 
-      // While handling fades, ease speed down with the shrinking cap
-      if (api.handlingT >= HANDLING_RAMP && api.speed > maxSpd) {
-        api.speed = THREE.MathUtils.damp(api.speed, maxSpd, 5, dt);
+      // Over solo cap without powerup (pickup wore off) → ease back to 70%
+      if (
+        !api.speedLocked &&
+        api.cruiseFactor < 0.05 &&
+        !powered &&
+        api.speed > soloCap + 0.05
+      ) {
+        api.speed = THREE.MathUtils.damp(api.speed, soloCap, 2.8, dt);
+      } else if (
+        !api.speedLocked &&
+        api.cruiseFactor < 0.05 &&
+        powered &&
+        !pedaling &&
+        !boosting &&
+        api.handlingT >= HANDLING_RAMP &&
+        api.speed > maxSpd
+      ) {
+        api.speed = THREE.MathUtils.damp(api.speed, maxSpd, 2.2, dt);
       }
 
       // On the phone — one hand, wet road, bad idea
-      if (api.onCall) {
+      if (!api.speedLocked && api.onCall) {
         api.speed = Math.min(api.speed, 5.5);
         api.speed = Math.max(0, api.speed - 4.5 * dt);
         trail.material.opacity *= Math.exp(-8 * dt);
       }
 
       // Full stop → pull over
-      if (api.speed <= STOP_SPEED && !pedaling) {
+      if (!api.speedLocked && api.cruiseFactor < 0.05 && api.speed <= STOP_SPEED && !pedaling) {
         api.speed = 0;
         api.stalled = true;
         api.parkSide = group.position.x >= 0 ? 1 : -1;
@@ -496,19 +570,23 @@ export function createPlayer(scene) {
       updateAnger(dt);
 
       headLight.intensity = boosting ? 14 : pedaling ? 9 : 5;
-      if (hMult > 1.02) {
-        accentMat.emissiveIntensity = 2.2 + (hMult - 1) * 8;
-        headLight.intensity += (hMult - 1) * 16;
-        trail.material.opacity = Math.max(trail.material.opacity, 0.25 + (hMult - 1) * 1.2);
+      if (api.handlingMult() > 1.02) {
+        const hm = api.handlingMult();
+        accentMat.emissiveIntensity = 2.2 + (hm - 1) * 8;
+        headLight.intensity += (hm - 1) * 16;
+        trail.material.opacity = Math.max(trail.material.opacity, 0.25 + (hm - 1) * 1.2);
       } else {
         accentMat.emissiveIntensity = 2.2;
       }
+
+      // Hard ceiling — never past the speed meter max
+      api.speed = Math.min(BOOST_SPEED, Math.max(0, api.speed));
 
       return {
         forward: api.speed,
         boosting,
         stalled: false,
-        handling: hMult > 1.01,
+        handling: api.handlingMult() > 1.01,
         handlingMult: hMult,
       };
     },

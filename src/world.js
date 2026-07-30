@@ -1318,6 +1318,98 @@ export function createWorld(scene) {
   seedScenery();
   sky.applyTheme(theme);
 
+  let blastLight = null;
+  let blastMesh = null;
+  let blastT = 0;
+  let shockMesh = null;
+  let shockT = 0;
+  /** @type {{ mesh: THREE.Mesh, vx:number, vy:number, vz:number, rx:number, ry:number, rz:number, life:number }[]} */
+  const debris = [];
+
+  function ensureBlast() {
+    if (blastMesh) return;
+    blastMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(2.2, 12, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffe8a0,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    blastMesh.visible = false;
+    props.add(blastMesh);
+    blastLight = new THREE.PointLight(0xffaa44, 0, 40, 2);
+    props.add(blastLight);
+
+    // Expanding shock ring (flat torus facing camera-ish)
+    shockMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.6, 1.1, 48),
+      new THREE.MeshBasicMaterial({
+        color: 0xffe0b0,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      }),
+    );
+    shockMesh.rotation.x = -Math.PI * 0.35;
+    shockMesh.visible = false;
+    props.add(shockMesh);
+  }
+
+  function clearDebris() {
+    for (const d of debris) {
+      props.remove(d.mesh);
+      d.mesh.geometry?.dispose?.();
+      d.mesh.material?.dispose?.();
+    }
+    debris.length = 0;
+  }
+
+  /** Chunks that read as a left-side building tearing apart */
+  function spawnBlastDebris(originX, originY, originZ) {
+    clearDebris();
+    const brickCols = [0x2a2620, 0x3a342e, 0x1a2030, 0x4a3830, 0x222018];
+    for (let i = 0; i < 18; i++) {
+      const w = 0.35 + Math.random() * 1.1;
+      const h = 0.4 + Math.random() * 1.6;
+      const d = 0.3 + Math.random() * 0.9;
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({
+          color: brickCols[i % brickCols.length],
+          roughness: 0.9,
+          metalness: 0.08,
+          emissive: 0xff6020,
+          emissiveIntensity: 0.15 + Math.random() * 0.35,
+        }),
+      );
+      // Stack roughly like a facade column on the left
+      const col = (i % 3) - 1;
+      const row = Math.floor(i / 3);
+      mesh.position.set(
+        originX + col * 1.1 + (Math.random() - 0.5) * 0.4,
+        originY + row * 1.35 + h * 0.5,
+        originZ + (Math.random() - 0.5) * 2.5,
+      );
+      props.add(mesh);
+      const outward = -1; // left
+      debris.push({
+        mesh,
+        vx: outward * (6 + Math.random() * 14) + (Math.random() - 0.5) * 4,
+        vy: 4 + Math.random() * 12 + row * 0.8,
+        vz: (Math.random() - 0.5) * 10,
+        rx: (Math.random() - 0.5) * 10,
+        ry: (Math.random() - 0.5) * 10,
+        rz: (Math.random() - 0.5) * 10,
+        life: 1.6 + Math.random() * 0.8,
+      });
+    }
+  }
+
   return {
     setLevel(next) {
       level = next;
@@ -1327,10 +1419,47 @@ export function createWorld(scene) {
       this.reset();
     },
 
+    setMeteorIntensity(n) {
+      sky.setMeteorIntensity?.(n);
+    },
+
+    setMeteorProximity(p) {
+      sky.setMeteorProximity?.(p);
+    },
+
+    /** Fireball + shockwave + left facade blown apart */
+    flashLeftBlast(playerZ = 0) {
+      ensureBlast();
+      blastT = 1.35;
+      shockT = 1.25;
+      const ox = -13;
+      const oy = 5.5;
+      const oz = playerZ - 16;
+      blastMesh.visible = true;
+      blastMesh.position.set(ox, oy, oz);
+      blastMesh.scale.setScalar(0.35);
+      blastMesh.material.opacity = 1;
+      blastLight.intensity = 36;
+      blastLight.position.copy(blastMesh.position);
+
+      shockMesh.visible = true;
+      shockMesh.position.set(ox + 2, oy * 0.7, oz + 4);
+      shockMesh.scale.setScalar(0.5);
+      shockMesh.material.opacity = 0.95;
+
+      spawnBlastDebris(ox - 1.5, 0.2, oz);
+    },
+
     reset() {
       nextObstacleAt = level.obstacleStart;
       nextPickupAt = level.pickupStart;
       clearDynamic();
+      clearDebris();
+      blastT = 0;
+      shockT = 0;
+      if (blastMesh) blastMesh.visible = false;
+      if (shockMesh) shockMesh.visible = false;
+      if (blastLight) blastLight.intensity = 0;
       seedScenery();
       goal.position.z = -(level.goal + 20);
       goal.visible = false;
@@ -1368,7 +1497,55 @@ export function createWorld(scene) {
         const riseFor = level.slipAt || level.goal;
         sky.setMoonRise(distance / (riseFor * 2.15));
       }
-      sky.update(time ?? performance.now() * 0.001, player.group.position);
+      sky.update(time ?? performance.now() * 0.001, player.group.position, dt);
+
+      if (blastT > 0 && blastMesh) {
+        blastT = Math.max(0, blastT - dt);
+        const u = blastT / 1.35;
+        blastMesh.material.opacity = u;
+        blastMesh.scale.setScalar(0.45 + (1 - u) * 6.5);
+        blastMesh.position.z += move;
+        if (blastLight) {
+          blastLight.intensity = 40 * u * u;
+          blastLight.position.copy(blastMesh.position);
+        }
+        if (blastT <= 0) {
+          blastMesh.visible = false;
+          if (blastLight) blastLight.intensity = 0;
+        }
+      }
+
+      if (shockT > 0 && shockMesh) {
+        shockT = Math.max(0, shockT - dt);
+        const u = 1 - shockT / 1.25;
+        shockMesh.visible = true;
+        shockMesh.scale.setScalar(0.8 + u * 28);
+        shockMesh.material.opacity = Math.max(0, 0.9 * (1 - u) * (1 - u));
+        shockMesh.position.z += move;
+        shockMesh.rotation.z += dt * 0.8;
+        if (shockT <= 0) shockMesh.visible = false;
+      }
+
+      for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i];
+        d.life -= dt;
+        d.vy -= 18 * dt;
+        d.mesh.position.x += d.vx * dt;
+        d.mesh.position.y += d.vy * dt;
+        d.mesh.position.z += d.vz * dt + move;
+        d.mesh.rotation.x += d.rx * dt;
+        d.mesh.rotation.y += d.ry * dt;
+        d.mesh.rotation.z += d.rz * dt;
+        if (d.mesh.material.emissiveIntensity != null) {
+          d.mesh.material.emissiveIntensity = Math.max(0, d.life * 0.35);
+        }
+        if (d.life <= 0 || d.mesh.position.y < -2) {
+          props.remove(d.mesh);
+          d.mesh.geometry?.dispose?.();
+          d.mesh.material?.dispose?.();
+          debris.splice(i, 1);
+        }
+      }
 
       for (const l of pool.lamps) l.group.position.z += move;
       for (const b of pool.buildings) b.position.z += move;

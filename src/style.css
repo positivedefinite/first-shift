@@ -92,6 +92,117 @@ body {
   opacity: 1;
 }
 
+/* Brief omen / early wipeout — shade without full blackout */
+.tunnel.on.soft {
+  opacity: 0.26;
+  transition: opacity 0.7s ease;
+}
+
+/* Way Back — whiteout before impact */
+.flashbang {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  opacity: 0;
+  background: #fffef8;
+}
+
+.flashbang.on {
+  animation: flashbangPop 0.95s ease-out forwards;
+}
+
+@keyframes flashbangPop {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Left-side heat blast (screen space) */
+.blast-left {
+  position: fixed;
+  inset: 0;
+  z-index: 23;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    ellipse 55% 80% at 8% 45%,
+    rgba(255, 220, 140, 0.95) 0%,
+    rgba(255, 120, 40, 0.55) 28%,
+    rgba(180, 40, 10, 0.2) 55%,
+    transparent 72%
+  );
+}
+
+.blast-left.on {
+  animation: blastLeftPop 1.15s ease-out forwards;
+}
+
+@keyframes blastLeftPop {
+  0% {
+    opacity: 0;
+    filter: brightness(1.4);
+  }
+  12% {
+    opacity: 1;
+    filter: brightness(1.8);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(1);
+  }
+}
+
+/* Expanding pressure ring from impact */
+.shockwave {
+  position: fixed;
+  left: 10%;
+  top: 48%;
+  width: 48px;
+  height: 72px;
+  margin: 0;
+  border: 3px solid rgba(255, 230, 190, 0.95);
+  border-radius: 50%;
+  box-shadow:
+    0 0 40px rgba(255, 180, 80, 0.55),
+    inset 0 0 30px rgba(255, 220, 160, 0.35);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 22;
+}
+
+.shockwave.on {
+  animation: shockExpand 1.2s cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes shockExpand {
+  0% {
+    width: 40px;
+    height: 60px;
+    opacity: 0.95;
+    border-width: 4px;
+  }
+  55% {
+    opacity: 0.55;
+  }
+  100% {
+    width: 180vw;
+    height: 180vh;
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
 /* Way Back wipeout — dark red flood */
 .blood {
   position: fixed;
@@ -803,6 +914,17 @@ button.menu-opt {
   padding: 0.55rem 1.1rem;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
+}
+
+button.menu-reset {
+  opacity: 0.72;
+  color: rgba(255, 140, 120, 0.9);
+  border-color: rgba(255, 100, 80, 0.35);
+}
+
+button.menu-reset:hover {
+  opacity: 1;
+  color: #ffb0a0;
 }
 
 .menu-version {
