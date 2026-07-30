@@ -275,7 +275,7 @@ function showAngryText() {
   music.textBlip();
 }
 
-/** Old Town — boss SMS at 75%, grants +12s */
+/** Old Town — boss SMS at 75%, grants +15s */
 function showBossTimeText() {
   els.textFrom.textContent = 'BOSS';
   els.textBody.textContent = "client called, there's still time!";
@@ -284,8 +284,8 @@ function showBossTimeText() {
   els.minimapWrap.classList.add('phone-busy');
   els.phoneText.classList.remove('hidden');
   els.phoneCall.classList.add('hidden');
-  els.status.textContent = 'new message — BOSS · +12s';
-  state.time += 12;
+  els.status.textContent = 'new message — BOSS · +15s';
+  state.time += 15;
   music.textBlip();
   pulseEvent('tip');
   // Reuse text phase so it auto-clears

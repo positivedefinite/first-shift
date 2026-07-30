@@ -3,4 +3,4 @@
  * Bump whenever you change gameplay, UI, audio, or deploy config.
  * Shown bottom-right in the client.
  */
-export const VERSION = '1.4.3';
+export const VERSION = '1.4.5';
