@@ -43,6 +43,32 @@ body {
   user-select: none;
 }
 
+.fps {
+  position: fixed;
+  left: 0.75rem;
+  top: 0.55rem;
+  z-index: 20;
+  pointer-events: none;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-weight: 700;
+  user-select: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+}
+
+.fps.bad {
+  color: #ff4a3a;
+}
+
+.fps.warn {
+  color: #ffd24a;
+}
+
+.fps.ok {
+  color: #5cffb0;
+}
+
 #minimap-wrap {
   position: absolute;
   right: 1.1rem;

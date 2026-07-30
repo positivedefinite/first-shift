@@ -20,6 +20,7 @@ const els = {
   version: document.getElementById('version'),
   menuVersion: document.getElementById('menuVersion'),
   endVersion: document.getElementById('endVersion'),
+  fps: document.getElementById('fps'),
   overlay: document.getElementById('overlay'),
   end: document.getElementById('end'),
   endEyebrow: document.getElementById('endEyebrow'),
@@ -177,7 +178,7 @@ function beginRing(who) {
 function acceptCall() {
   if (call.phase !== 'ring') return;
   call.phase = 'talk';
-  call.timer = 3;
+  call.timer = 4.2;
   player.onCall = true;
   els.phoneCall.classList.remove('ringing');
   els.callActions.classList.add('hidden');
@@ -246,7 +247,7 @@ function updateCall(dt) {
   } else if (call.phase === 'talk') {
     const weird = call.who?.voice === 'weird';
     els.callStatus.textContent = weird
-      ? `${'…'.repeat(1 + Math.floor((3 - call.timer) * 2))}`
+      ? `${'…'.repeat(1 + Math.floor((4.2 - call.timer) * 2))}`
       : `on call… ${Math.ceil(Math.max(0, call.timer))}s`;
     if (call.timer <= 0) {
       endCallUi();
@@ -380,7 +381,7 @@ const rain = createRain(scene);
 rain.setOpacity(level.theme.rainOpacity);
 
 const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -728,11 +729,32 @@ renderLevelGrid();
 world.setLevel(level);
 applyAtmosphere(level);
 
+let fpsFrames = 0;
+let fpsAcc = 0;
+let fpsSmooth = 60;
+
+function updateFps(dt) {
+  if (!els.fps || dt <= 0) return;
+  fpsFrames += 1;
+  fpsAcc += dt;
+  if (fpsAcc < 0.25) return;
+  const instant = fpsFrames / fpsAcc;
+  fpsSmooth = fpsSmooth * 0.65 + instant * 0.35;
+  fpsFrames = 0;
+  fpsAcc = 0;
+  const n = Math.round(fpsSmooth);
+  els.fps.textContent = `${n} FPS`;
+  els.fps.classList.remove('bad', 'warn', 'ok');
+  els.fps.classList.add(n < 10 ? 'bad' : n <= 30 ? 'warn' : 'ok');
+}
+
 async function init() {
   await renderer.init();
 
   renderer.setAnimationLoop(() => {
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const rawDt = clock.getDelta();
+    updateFps(rawDt);
+    const dt = Math.min(rawDt, 0.05);
 
     if (state.mode === 'play') {
       if (inputLock > 0) inputLock = Math.max(0, inputLock - dt);
@@ -753,11 +775,10 @@ async function init() {
         els.status.textContent = 'stalled — hold W to push off';
       }
 
-      const hit = result.stalled
-        ? false
-        : world.update(dt, player, state.distance, clock.elapsedTime);
+      // Always real dt — vans/walkers keep moving when you stall (scroll uses player.speed)
+      const hit = world.update(dt, player, state.distance, clock.elapsedTime);
 
-      if (hit && hit.type === 'crash') {
+      if (!result.stalled && hit && hit.type === 'crash') {
         const penalty = hit.penalty ?? 3.5;
         state.shake = 0.85 + Math.min(0.4, (hit.bumps - 1) * 0.15);
         state.time -= penalty;
@@ -768,15 +789,11 @@ async function init() {
             ? `SCRAPE ×${hit.bumps} — −${shown}s · peel off`
             : `HIT — −${shown}s · keep pedaling`;
         pulseEvent('hit');
-      } else if (hit === 'pickup') {
+      } else if (!result.stalled && hit === 'pickup') {
         player.goodHandling();
         state.shake = 0.12;
         els.status.textContent = 'GOOD HANDLING — feel the grip';
         pulseEvent('tip');
-      }
-
-      if (result.stalled) {
-        world.update(0, player, state.distance, clock.elapsedTime);
       }
 
       updateCall(dt);
@@ -819,6 +836,8 @@ async function init() {
       const sway = Math.sin(clock.elapsedTime * 0.35) * 0.55;
       camera.position.set(sway, 2.4, 3.6);
       camera.lookAt(player.group.position.x * 0.4, 1.1, player.group.position.z - 5);
+      // Title: skip bloom cost — night still reads from emissives
+      bloomPass.strength.value = 0;
     }
 
     world.pulse(clock.elapsedTime);

@@ -397,7 +397,7 @@ export function createMusic() {
       }
     },
 
-    /** Phone talk — `normal` murmur or `weird` distorted voices (~3s) */
+    /** Phone talk — `normal` human-ish bla-bla or `weird` distorted (~4s) */
     startTalk(style = 'normal') {
       if (muted) return;
       ensure();
@@ -408,50 +408,136 @@ export function createMusic() {
         this._startTalkWeird();
         return;
       }
+      this._startTalkHuman();
+    },
 
+    /** Formant “bla bla bla” — glottal buzz + vowels + syllable gate */
+    _startTalkHuman() {
       const t = ctx.currentTime;
-      const dur = 3.05;
+      const dur = 4.15;
+      const stoppers = [];
 
-      // Band-limited noise as voice bed
-      const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      let last = 0;
-      for (let i = 0; i < data.length; i++) {
-        const white = Math.random() * 2 - 1;
-        last = last * 0.7 + white * 0.3;
-        // syllable envelope
-        const env = 0.35 + 0.65 * Math.abs(Math.sin(i * 0.0021)) * Math.abs(Math.sin(i * 0.0007));
-        data[i] = last * env * 0.55;
+      // Glottal source (female-ish phone voice)
+      const glottal = ctx.createOscillator();
+      glottal.type = 'sawtooth';
+      glottal.frequency.setValueAtTime(205, t);
+      glottal.frequency.linearRampToValueAtTime(175, t + 0.9);
+      glottal.frequency.linearRampToValueAtTime(230, t + 1.8);
+      glottal.frequency.linearRampToValueAtTime(190, t + 2.7);
+      glottal.frequency.linearRampToValueAtTime(215, t + dur);
+
+      const vib = ctx.createOscillator();
+      vib.type = 'sine';
+      vib.frequency.value = 5.8;
+      const vibG = ctx.createGain();
+      vibG.gain.value = 7;
+      vib.connect(vibG);
+      vibG.connect(glottal.frequency);
+
+      // Two formants → vowel shape
+      const f1 = ctx.createBiquadFilter();
+      f1.type = 'bandpass';
+      f1.Q.value = 6;
+      f1.frequency.value = 650;
+      const f2 = ctx.createBiquadFilter();
+      f2.type = 'bandpass';
+      f2.Q.value = 7;
+      f2.frequency.value = 1400;
+
+      const mix = ctx.createGain();
+      mix.gain.value = 0.55;
+
+      // Earpiece tin
+      const phone = ctx.createBiquadFilter();
+      phone.type = 'bandpass';
+      phone.frequency.value = 1600;
+      phone.Q.value = 0.85;
+
+      const gate = ctx.createGain();
+      gate.gain.value = 0.0001;
+
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(0.55, t + 0.06);
+      out.gain.setValueAtTime(0.55, t + dur - 0.25);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      glottal.connect(f1);
+      glottal.connect(f2);
+      f1.connect(mix);
+      f2.connect(mix);
+      mix.connect(gate);
+      gate.connect(phone);
+      phone.connect(out);
+      out.connect(nodes.comp);
+
+      // Consonant clicks (the “b” in bla)
+      const nLen = Math.floor(ctx.sampleRate * 0.04);
+      const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
+      const nData = nBuf.getChannelData(0);
+      for (let i = 0; i < nLen; i++) nData[i] = (Math.random() * 2 - 1) * (1 - i / nLen);
+
+      // Vowels: ah / eh / oo / ih — cycle like chatter
+      const vowels = [
+        [700, 1100],
+        [500, 1700],
+        [400, 800],
+        [350, 2100],
+        [600, 1200],
+      ];
+      const syl = 0.16;
+      let sylI = 0;
+      for (let when = t + 0.05; when < t + dur - 0.2; when += syl) {
+        // Breath / pause every ~6 syllables
+        if (sylI % 7 === 6) {
+          sylI += 1;
+          continue;
+        }
+        const v = vowels[sylI % vowels.length];
+        f1.frequency.setValueAtTime(v[0] + (Math.random() - 0.5) * 40, when);
+        f2.frequency.setValueAtTime(v[1] + (Math.random() - 0.5) * 80, when);
+
+        const peak = 0.7 + Math.random() * 0.35;
+        const open = 0.07 + Math.random() * 0.05;
+        gate.gain.setValueAtTime(0.0001, when);
+        gate.gain.exponentialRampToValueAtTime(peak, when + 0.018);
+        gate.gain.exponentialRampToValueAtTime(0.0001, when + open);
+
+        // Plosive blip at syllable start
+        const click = ctx.createBufferSource();
+        click.buffer = nBuf;
+        const cg = ctx.createGain();
+        cg.gain.value = 0.22;
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 900;
+        click.connect(hp);
+        hp.connect(cg);
+        cg.connect(phone);
+        click.start(when);
+        click.stop(when + 0.04);
+        stoppers.push(click);
+
+        sylI += 1;
       }
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 1200;
-      bp.Q.value = 0.9;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.22, t + 0.08);
-      g.gain.setValueAtTime(0.22, t + dur - 0.2);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      src.connect(bp);
-      bp.connect(g);
-      g.connect(nodes.comp);
-      src.start(t);
-      src.stop(t + dur);
 
-      // Soft earpiece tone
-      const tone = ctx.createOscillator();
-      tone.type = 'sine';
-      tone.frequency.value = 340;
-      const tg = ctx.createGain();
-      tg.gain.value = 0.03;
-      tone.connect(tg);
-      tg.connect(nodes.comp);
-      tone.start(t);
-      tone.stop(t + dur);
+      glottal.start(t);
+      glottal.stop(t + dur);
+      vib.start(t);
+      vib.stop(t + dur);
+      stoppers.push(glottal, vib);
 
-      talkNodes = { stop() { src.stop(); tone.stop(); } };
+      talkNodes = {
+        stop() {
+          for (const n of stoppers) {
+            try {
+              n.stop();
+            } catch {
+              /* */
+            }
+          }
+        },
+      };
     },
 
     _startTalkWeird() {

@@ -673,7 +673,7 @@ export function createWorld(scene) {
 
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x222830, roughness: 0.5, metalness: 0.6 });
 
-  function spawnLamp(z, side) {
+  function spawnLamp(z, side, index = 0) {
     const g = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 3.6, 6), poleMat);
     pole.position.y = 1.8;
@@ -683,20 +683,25 @@ export function createWorld(scene) {
     arm.position.set(side * -0.4, 3.55, 0);
     g.add(arm);
 
+    // Emissive bulb on every lamp; real PointLight only on a stride (~10–12 total)
     const bulbCol =
       theme.mode === 'suburb' || theme.mode === 'oldtown' ? 0xffe0a0 : 0xffd9a0;
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), neonMat(bulbCol, 3.5));
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), neonMat(bulbCol, 5.2));
     bulb.position.set(side * -0.8, 3.4, 0);
     g.add(bulb);
 
-    const light = new THREE.PointLight(
-      theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
-      theme.mode === 'downtown' ? 7 : theme.mode === 'oldtown' ? 4.5 : 5.5,
-      15,
-      2,
-    );
-    light.position.copy(bulb.position);
-    g.add(light);
+    const stride =
+      theme.mode === 'downtown' ? 3 : theme.mode === 'oldtown' ? 3 : theme.mode === 'borough' ? 3 : 4;
+    if (index % stride === 0) {
+      const light = new THREE.PointLight(
+        theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
+        theme.mode === 'downtown' ? 6.5 : theme.mode === 'oldtown' ? 5 : 5.5,
+        9.5,
+        2,
+      );
+      light.position.copy(bulb.position);
+      g.add(light);
+    }
 
     if (theme.mode !== 'suburb' && theme.mode !== 'oldtown' && theme.mode !== 'borough') {
       const accent = new THREE.Mesh(
@@ -850,8 +855,9 @@ export function createWorld(scene) {
 
   const vanGeo = new THREE.BoxGeometry(1.8, 1.6, 3.2);
   const vanMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.5, metalness: 0.35 });
-  const coffeeGeo = new THREE.CylinderGeometry(0.22, 0.28, 0.45, 10);
-  const coffeeMat = neonMat(0xffb347, 2.8);
+  // Handling token — flat disc, no cup / no light props
+  const pickupGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.07, 12);
+  const pickupMat = neonMat(0xffc857, 4.2);
 
   // Slightly lifted coats — night road eats pure blacks
   const coatColors = [0x2c3a4c, 0x3c3448, 0x304038, 0x443828, 0x343c48, 0x4a3844, 0x384044];
@@ -959,12 +965,26 @@ export function createWorld(scene) {
 
   let nextObstacleAt = 40;
   let nextPickupAt = 55;
+  let vansSpawned = 0;
+  let walkersSpawned = 0;
 
   function clearDynamic() {
     for (const o of pool.obstacles) props.remove(o.mesh);
     for (const p of pool.pickups) props.remove(p.mesh);
     pool.obstacles.length = 0;
     pool.pickups.length = 0;
+    vansSpawned = 0;
+    walkersSpawned = 0;
+  }
+
+  function trafficAllows(kind) {
+    const t = level.traffic || {};
+    if (kind === 'van') return t.maxVans == null || vansSpawned < t.maxVans;
+    return t.maxWalkers == null || walkersSpawned < t.maxWalkers;
+  }
+
+  function trafficExhausted() {
+    return !trafficAllows('van') && !trafficAllows('walker');
   }
 
   function clearScenery() {
@@ -986,7 +1006,7 @@ export function createWorld(scene) {
 
     for (let i = 0; i < count; i++) {
       const z = -i * spacing - 3;
-      spawnLamp(z, i % 2 === 0 ? -1 : 1);
+      spawnLamp(z, i % 2 === 0 ? -1 : 1, i);
 
       if (theme.mode === 'borough') {
         // One house per slot, flush terrace both sides
@@ -1023,22 +1043,25 @@ export function createWorld(scene) {
     }
   }
 
-  function spawnObstacle(z) {
-    const roll = Math.random();
+  function spawnObstacle(z, mark = 0) {
+    if (trafficExhausted()) return false;
+
     let mesh;
     let radius;
     let driveSpeed = 0; // world units/sec toward -z (same way as rider)
     let strafeSpeed = 0; // cross-street walk (x)
     let phase = 0;
-    // Vans vs walkers only — no cones/bins on the road
-    const vanChance =
-      theme.mode === 'suburb'
-        ? 0.22
-        : theme.mode === 'borough'
-          ? 0.35
-          : theme.mode === 'downtown'
-            ? 0.5
-            : 0.3;
+    const t = level.traffic || {};
+    const vanChance = t.vanChance ?? 0.5;
+    let wantVan = Math.random() < vanChance;
+    // Cap of 1 walker → force it once mid-run so RNG can't skip it
+    if (t.maxWalkers === 1 && walkersSpawned === 0 && mark >= level.goal * 0.4) {
+      wantVan = false;
+    }
+    if (wantVan && !trafficAllows('van')) wantVan = false;
+    if (!wantVan && !trafficAllows('walker')) wantVan = true;
+    if (wantVan && !trafficAllows('van')) return false;
+    if (!wantVan && !trafficAllows('walker')) return false;
 
     // hitShape: box uses halfX/halfZ (tighter than circle around long vans)
     let hitShape = 'circle';
@@ -1046,8 +1069,9 @@ export function createWorld(scene) {
     let halfZ = 0;
     let kind = 'walker';
 
-    if (roll < vanChance) {
+    if (wantVan) {
       kind = 'van';
+      vansSpawned += 1;
       // Fresh material per van — flash on bump without tinting the shared mat
       mesh = new THREE.Mesh(
         vanGeo,
@@ -1075,6 +1099,7 @@ export function createWorld(scene) {
       mesh.position.x = Math.random() < 0.35 ? 0 : lane;
     } else {
       kind = 'walker';
+      walkersSpawned += 1;
       mesh = buildPasserby();
       radius = 0.34;
       phase = Math.random() * Math.PI * 2;
@@ -1101,17 +1126,14 @@ export function createWorld(scene) {
       bumps: 0,
       cool: 0,
     });
+    return true;
   }
 
   function spawnPickup(z) {
-    const mesh = new THREE.Mesh(coffeeGeo, coffeeMat);
-    mesh.position.set((Math.random() - 0.5) * 4.8, 0.9, z);
-    const halo = new THREE.PointLight(0xffb347, 3, 8, 2);
-    halo.position.y = 0.3;
-    mesh.add(halo);
+    const mesh = new THREE.Mesh(pickupGeo, pickupMat);
+    mesh.position.set((Math.random() - 0.5) * 4.8, 0.85, z);
     props.add(mesh);
-    // Fixed phase — bob pace stays steady (z used to drift the wave)
-    pool.pickups.push({ mesh, radius: 0.7, phase: Math.random() * Math.PI * 2 });
+    pool.pickups.push({ mesh, radius: 0.55, phase: Math.random() * Math.PI * 2 });
   }
 
   function applySurfaceColors() {
@@ -1211,9 +1233,13 @@ export function createWorld(scene) {
       for (const c of pool.clutter) c.position.z += move;
       const t = time ?? performance.now() * 0.001;
       for (const o of pool.obstacles) {
-        // Scroll with world, then drive forward (same direction as you)
-        o.mesh.position.z += move;
-        if (o.driveSpeed > 0) o.mesh.position.z -= o.driveSpeed * dt;
+        // Scenery scroll follows the bike; van drive / walker strafe use wall-clock dt
+        // (independent of player.speed — keep rolling when you stall)
+        if (o.driveSpeed > 0) {
+          o.mesh.position.z += move - o.driveSpeed * dt;
+        } else {
+          o.mesh.position.z += move;
+        }
         if (o.cool > 0) o.cool = Math.max(0, o.cool - dt);
         if (o.strafeSpeed) {
           o.mesh.position.x += o.strafeSpeed * dt;
@@ -1257,7 +1283,11 @@ export function createWorld(scene) {
 
       const goalCut = level.goal - 30;
       while (distance + 80 > nextObstacleAt && nextObstacleAt < goalCut) {
-        spawnObstacle(-(nextObstacleAt - distance) - 20);
+        const mark = nextObstacleAt;
+        if (trafficExhausted() || !spawnObstacle(-(mark - distance) - 20, mark)) {
+          nextObstacleAt = level.goal;
+          break;
+        }
         const early = distance < 200;
         const [a, b] = early ? level.obstacleGapEarly : level.obstacleGapLate;
         nextObstacleAt += a + Math.random() * b;
@@ -1270,13 +1300,13 @@ export function createWorld(scene) {
       if (distance > level.goal - 130) goal.visible = true;
 
       for (const p of pool.pickups) {
-        // Same angular speed for every cup — only start phase differs
-        p.mesh.position.y = 0.9 + Math.sin(t * 2.4 + p.phase) * 0.15;
-        p.mesh.rotation.y = t * 1.6 + p.phase;
+        p.mesh.position.y = 0.85 + Math.sin(t * 2.2 + p.phase) * 0.1;
+        p.mesh.rotation.y = t * 1.1 + p.phase;
       }
 
       const pr = player.radius;
       let crashEvent = null;
+      const collide = !player.stalled;
 
       for (let i = pool.obstacles.length - 1; i >= 0; i--) {
         const o = pool.obstacles[i];
@@ -1290,6 +1320,8 @@ export function createWorld(scene) {
           pool.obstacles.splice(i, 1);
           continue;
         }
+
+        if (!collide) continue;
 
         const px = player.group.position.x;
         const pz = player.group.position.z;
