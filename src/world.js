@@ -850,71 +850,110 @@ export function createWorld(scene) {
 
   const vanGeo = new THREE.BoxGeometry(1.8, 1.6, 3.2);
   const vanMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.5, metalness: 0.35 });
-  const binGeo = new THREE.CylinderGeometry(0.45, 0.5, 1.1, 8);
-  const binMat = new THREE.MeshStandardMaterial({ color: 0x343a48, roughness: 0.7 });
   const coffeeGeo = new THREE.CylinderGeometry(0.22, 0.28, 0.45, 10);
   const coffeeMat = neonMat(0xffb347, 2.8);
 
-  const coatColors = [0x1a2430, 0x2a2030, 0x1e2820, 0x302820, 0x222830, 0x3a2830, 0x243028];
-  const umbrellaColors = [0x1a3040, 0x301820, 0x202830, 0x1a2820, 0x402028];
+  // Slightly lifted coats — night road eats pure blacks
+  const coatColors = [0x2c3a4c, 0x3c3448, 0x304038, 0x443828, 0x343c48, 0x4a3844, 0x384044];
 
   function buildPasserby() {
     const g = new THREE.Group();
     const coat = pick(coatColors);
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.2, 0.5, 4, 6),
-      new THREE.MeshStandardMaterial({ color: coat, roughness: 0.88 }),
-    );
-    body.position.y = 0.95;
-    g.add(body);
+    const coatMat = new THREE.MeshStandardMaterial({
+      color: coat,
+      roughness: 0.78,
+      metalness: 0.06,
+      emissive: coat,
+      emissiveIntensity: 0.18,
+    });
+    const skinMat = new THREE.MeshStandardMaterial({
+      color: 0xd2b090,
+      roughness: 0.62,
+      emissive: 0x3a2818,
+      emissiveIntensity: 0.15,
+    });
 
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.15, 8, 8),
-      new THREE.MeshStandardMaterial({ color: 0xc4a080, roughness: 0.7 }),
-    );
-    head.position.y = 1.52;
-    g.add(head);
+    // Hunched upper body — eyes on the glow rectangle
+    const torso = new THREE.Group();
+    torso.position.y = 0.02;
+    torso.rotation.x = 0.42;
 
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x12161c, roughness: 0.9 });
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.12), legMat);
-    const legR = legL.clone();
-    legL.position.set(-0.09, 0.22, 0);
-    legR.position.set(0.09, 0.22, 0);
-    g.add(legL, legR);
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.52, 6, 12), coatMat);
+    body.position.y = 1.02;
+    torso.add(body);
 
-    // Rain coat hood / hair blob
-    if (Math.random() > 0.55) {
-      const hood = new THREE.Mesh(
-        new THREE.SphereGeometry(0.17, 6, 6),
-        new THREE.MeshStandardMaterial({ color: coat, roughness: 0.9 }),
-      );
-      hood.position.set(0, 1.58, -0.02);
-      hood.scale.set(1, 0.85, 1.1);
-      g.add(hood);
-    }
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.155, 16, 12), skinMat);
+    head.position.set(0, 1.55, 0.1);
+    head.rotation.x = 0.65;
+    torso.add(head);
 
+    // Soft hoodie — offset so it doesn't z-fight the skull
     if (Math.random() > 0.4) {
-      const stem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.018, 0.018, 0.65, 4),
-        new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 }),
+      const hood = new THREE.Mesh(
+        new THREE.SphereGeometry(0.175, 14, 10),
+        coatMat.clone(),
       );
-      stem.position.set(0.26, 1.45, 0.05);
-      g.add(stem);
-      const canopy = new THREE.Mesh(
-        new THREE.ConeGeometry(0.42, 0.22, 8),
-        new THREE.MeshStandardMaterial({
-          color: pick(umbrellaColors),
-          roughness: 0.55,
-          metalness: 0.1,
-        }),
-      );
-      canopy.position.set(0.26, 1.82, 0.05);
-      canopy.rotation.x = Math.PI;
-      g.add(canopy);
+      hood.position.set(0, 1.62, 0.02);
+      hood.scale.set(1.05, 0.78, 1.12);
+      torso.add(hood);
     }
+
+    const armGeo = new THREE.CapsuleGeometry(0.05, 0.26, 4, 8);
+    const armL = new THREE.Mesh(armGeo, coatMat);
+    armL.position.set(-0.2, 1.12, 0.28);
+    armL.rotation.set(-1.15, 0, 0.4);
+    torso.add(armL);
+    const armR = new THREE.Mesh(armGeo, coatMat);
+    armR.position.set(0.2, 1.12, 0.28);
+    armR.rotation.set(-1.15, 0, -0.4);
+    torso.add(armR);
+
+    // Phone shell + glowing screen
+    const phone = new THREE.Group();
+    phone.position.set(0, 1.0, 0.48);
+    phone.rotation.x = -0.55;
+    const shell = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.22, 0.018),
+      new THREE.MeshStandardMaterial({ color: 0x101418, roughness: 0.4, metalness: 0.5 }),
+    );
+    phone.add(shell);
+    // Emissive + additive plane — NO PointLight (N lights × PBR meshes = GPU death)
+    const screenMat = neonMat(0x8ad4ff, 6.5);
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.175, 0.01), screenMat);
+    screen.position.z = 0.012;
+    phone.add(screen);
+    const halo = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.32, 0.4),
+      new THREE.MeshBasicMaterial({
+        color: 0x6ec8ff,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      }),
+    );
+    halo.position.z = 0.02;
+    phone.add(halo);
+    torso.add(phone);
+
+    g.add(torso);
+
+    const legMat = new THREE.MeshStandardMaterial({
+      color: 0x1a2028,
+      roughness: 0.88,
+      emissive: 0x0a1018,
+      emissiveIntensity: 0.2,
+    });
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.13), legMat);
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.13), legMat);
+    legL.position.set(-0.1, 0.23, 0);
+    legR.position.set(0.1, 0.23, 0);
+    g.add(legL, legR);
 
     g.userData.legs = [legL, legR];
     g.userData.body = body;
+    g.userData.screenMat = screenMat;
     return g;
   }
 
@@ -991,30 +1030,21 @@ export function createWorld(scene) {
     let driveSpeed = 0; // world units/sec toward -z (same way as rider)
     let strafeSpeed = 0; // cross-street walk (x)
     let phase = 0;
-    // Suburbs: more walkers/bins, fewer vans
-    // Mix shifts by district; spawn *rate* comes from level.obstacleGap*
+    // Vans vs walkers only — no cones/bins on the road
     const vanChance =
       theme.mode === 'suburb'
-        ? 0.2
+        ? 0.22
         : theme.mode === 'borough'
-          ? 0.32
+          ? 0.35
           : theme.mode === 'downtown'
-            ? 0.48
-            : 0.28; // oldtown: denser overall, more walkers than vans
-    const walkerChance =
-      theme.mode === 'suburb'
-        ? 0.4
-        : theme.mode === 'borough'
-          ? 0.42
-          : theme.mode === 'downtown'
-            ? 0.38
-            : 0.58;
+            ? 0.5
+            : 0.3;
 
     // hitShape: box uses halfX/halfZ (tighter than circle around long vans)
     let hitShape = 'circle';
     let halfX = 0;
     let halfZ = 0;
-    let kind = 'bin';
+    let kind = 'walker';
 
     if (roll < vanChance) {
       kind = 'van';
@@ -1043,27 +1073,17 @@ export function createWorld(scene) {
       }
       const lane = [-2.2, 0, 2.2][Math.floor(Math.random() * 3)];
       mesh.position.x = Math.random() < 0.35 ? 0 : lane;
-    } else if (roll < vanChance + walkerChance) {
+    } else {
       kind = 'walker';
       mesh = buildPasserby();
       radius = 0.34;
       phase = Math.random() * Math.PI * 2;
-      // Mostly left → right; some reverse
-      const goRight = Math.random() > 0.22;
-      strafeSpeed = (goRight ? 1 : -1) * (1.6 + Math.random() * 1.4);
+      // One way only — coin flip L→R or R→L · slow phone-zombie shuffle
+      const goRight = Math.random() < 0.5;
+      strafeSpeed = (goRight ? 1 : -1) * (0.7 + Math.random() * 0.55);
       mesh.position.x = goRight ? -(ROAD_W / 2 + 1.4) : ROAD_W / 2 + 1.4;
-      // Face walk direction (default mesh faces -Z)
-      mesh.rotation.y = goRight ? -Math.PI / 2 : Math.PI / 2;
-    } else {
-      kind = 'bin';
-      mesh = new THREE.Mesh(binGeo, binMat);
-      mesh.position.y = 0.55;
-      hitShape = 'box';
-      halfX = 0.38;
-      halfZ = 0.38;
-      radius = 0.45;
-      const lane = [-2.2, 0, 2.2][Math.floor(Math.random() * 3)];
-      mesh.position.x = Math.random() < 0.4 ? lane : (Math.random() < 0.5 ? -2.1 : 2.1);
+      // Phone sits on local +Z — that axis leads the cross
+      mesh.rotation.y = goRight ? Math.PI / 2 : -Math.PI / 2;
     }
 
     mesh.position.z = z;
@@ -1200,10 +1220,14 @@ export function createWorld(scene) {
           // Walk cycle
           const legs = o.mesh.userData.legs;
           if (legs) {
-            const swing = Math.sin(t * 9 + o.phase) * 0.45;
+            const swing = Math.sin(t * 5.2 + o.phase) * 0.32;
             legs[0].rotation.x = swing;
             legs[1].rotation.x = -swing;
-            o.mesh.position.y = Math.abs(Math.sin(t * 9 + o.phase)) * 0.04;
+            o.mesh.position.y = Math.abs(Math.sin(t * 5.2 + o.phase)) * 0.025;
+          }
+          const screenMat = o.mesh.userData.screenMat;
+          if (screenMat) {
+            screenMat.emissiveIntensity = 4.4 + Math.sin(t * 7 + o.phase) * 1.1;
           }
         }
       }
@@ -1330,7 +1354,7 @@ export function createWorld(scene) {
           continue;
         }
 
-        // Walkers / bins — soft hit then clear
+        // Walkers — soft hit then clear
         if (player.invuln > 0 || o.cool > 0) continue;
         if (o.mesh.position.z <= -1.8 || o.mesh.position.z >= 1.4) continue;
 

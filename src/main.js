@@ -14,8 +14,12 @@ import {
   getBest,
   setBest,
 } from './levels.js';
+import { VERSION } from './version.js';
 
 const els = {
+  version: document.getElementById('version'),
+  menuVersion: document.getElementById('menuVersion'),
+  endVersion: document.getElementById('endVersion'),
   overlay: document.getElementById('overlay'),
   end: document.getElementById('end'),
   endEyebrow: document.getElementById('endEyebrow'),
@@ -58,6 +62,11 @@ const els = {
   textFrom: document.getElementById('textFrom'),
   textBody: document.getElementById('textBody'),
 };
+
+const verLabel = `v${VERSION}`;
+if (els.version) els.version.textContent = verLabel;
+if (els.menuVersion) els.menuVersion.textContent = verLabel;
+if (els.endVersion) els.endVersion.textContent = verLabel;
 
 /** Mid-run callers — keyed by level.key */
 const CALLERS = {
@@ -255,30 +264,15 @@ function updateCall(dt) {
 /** Peak possible speed (boost × handling) — meter full scale */
 const SPEED_CEIL = 26 * 1.25;
 
-let toastTimer = 0;
 let clockBumpTimer = 0;
 let bloomKick = 0;
 
-function pulseEvent(kind, opts = {}) {
-  // kind: 'tip' | 'hit'  (tip = good handling)
+function pulseEvent(kind) {
+  // kind: 'tip' | 'hit' — SFX + light HUD, no center toast
   const isTip = kind === 'tip';
-  const penalty = opts.penalty ?? 3.5;
-  const bumps = opts.bumps ?? 1;
-  const label = isTip
-    ? 'GOOD HANDLING'
-    : bumps > 1
-      ? `HIT ×${bumps}`
-      : opts.kind === 'van'
-        ? 'BUMP'
-        : 'HIT';
-  els.toast.className = `toast show ${kind}`;
-  els.toast.innerHTML = isTip
-    ? `${label}<span class="toast-sub">SMOOTH LINE</span>`
-    : `−${penalty % 1 ? penalty.toFixed(1) : penalty}s<span class="toast-sub">${label}</span>`;
-  toastTimer = 1.2;
+  if (els.toast) els.toast.className = 'toast';
 
   els.fx.className = `fx ${kind}`;
-  // reflow so animation restarts on stacked events
   void els.fx.offsetWidth;
   els.fx.className = `fx ${kind}`;
 
@@ -503,9 +497,10 @@ function startLevel(id) {
   inputLock = 0.65;
 
   player.reset();
-  // Title cam sways on X — lerp from that reads as the bike sliding sideways
-  camera.position.set(0, 2.4, 3.8);
-  camera.lookAt(0, 1.2, -7);
+  // Title cam sways on X — snap to spawn lane (right side)
+  const sx = player.startX ?? 1.85;
+  camera.position.set(sx * 0.72, 2.4, 3.8);
+  camera.lookAt(sx * 0.85, 1.2, -7);
   state.shake = 0;
 
   els.overlay.classList.add('hidden');
@@ -683,9 +678,7 @@ function updateHud() {
       ? 'STALL'
       : player.onCall
         ? 'CALL'
-        : hMult > 1.02
-          ? 'GRIP'
-          : 'SPD';
+        : 'SPEED';
   }
 
   const radar = world.getRadar();
@@ -748,7 +741,7 @@ async function init() {
       // Nail centerline during spawn grace (vx can't accumulate)
       if (inputLock > 0) {
         player.vx = 0;
-        player.setX(0);
+        player.setX(player.startX ?? 1.85);
       }
 
       state.distance += result.forward * dt;
@@ -774,7 +767,7 @@ async function init() {
           hit.bumps > 1
             ? `SCRAPE ×${hit.bumps} — −${shown}s · peel off`
             : `HIT — −${shown}s · keep pedaling`;
-        pulseEvent('hit', { penalty, bumps: hit.bumps, kind: hit.kind });
+        pulseEvent('hit');
       } else if (hit === 'pickup') {
         player.goodHandling();
         state.shake = 0.12;
@@ -797,10 +790,6 @@ async function init() {
           : level.musicBase + (player.speed / 38) * 0.55,
       );
 
-      if (toastTimer > 0) {
-        toastTimer -= dt;
-        if (toastTimer <= 0) els.toast.className = 'toast';
-      }
       if (clockBumpTimer > 0) {
         clockBumpTimer -= dt;
         if (clockBumpTimer <= 0) {

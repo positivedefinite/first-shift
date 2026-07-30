@@ -4,6 +4,8 @@ Rainy night bike run. Suburbs → Borough → Downtown → Old Town.
 
 Browser game on **three.js r185** — `WebGPURenderer` + TSL `RenderPipeline` bloom.
 
+**Version:** bump `src/version.js` + `package.json` on every change (shown bottom-right as `v…`).
+
 ## Run locally
 
 ```bash

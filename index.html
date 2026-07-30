@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <div id="version" class="version" aria-hidden="true"></div>
     <div id="hud">
       <div class="hud-top">
         <div class="brand-wrap">
@@ -52,7 +53,7 @@
         </div>
         <div class="speed-meter" aria-label="Speed">
           <div class="speed-track"><i id="speedFill"></i></div>
-          <span id="speedLabel">SPD</span>
+          <span id="speedLabel">SPEED</span>
         </div>
       </aside>
       <div id="toast" class="toast" aria-live="polite"></div>
@@ -68,6 +69,7 @@
 
       <button id="startBtn" type="button">PUNCH IN</button>
       <p class="hint">1–4 pick level · hold W / ↑ to pedal · SPACE boost · M mute</p>
+      <p id="menuVersion" class="menu-version" aria-hidden="true"></p>
     </div>
 
     <div id="end" class="panel hidden">
@@ -92,6 +94,7 @@
         <button id="retryBtn" type="button" class="ghost">TRY AGAIN</button>
         <button id="mapBtn" type="button" class="ghost">MAP</button>
       </div>
+      <p id="endVersion" class="menu-version" aria-hidden="true"></p>
     </div>
 
     <script type="module" src="/src/main.js"></script>

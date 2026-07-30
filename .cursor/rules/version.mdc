@@ -1,0 +1,15 @@
+---
+description: Bump FIRST SHIFT version on every change
+alwaysApply: true
+---
+
+# Version
+
+When you change anything in this game (code, assets, copy, deploy config):
+
+1. Bump `VERSION` in `src/version.js` (semver).
+2. Set the same string in `package.json` `"version"`.
+
+Patch (`x.y.Z`) for fixes/polish. Minor (`x.Y.0`) for features. Major for breaking resets.
+
+The client shows `v{VERSION}` bottom-right from `src/version.js`.

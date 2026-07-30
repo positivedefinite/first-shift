@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 
 const ROAD_HALF = 3.35;
+/** Spawn lane — right side of road (avoids centerline glitch feel) */
+const START_X = 1.85;
 const MAX_SPEED = 20;
 const BOOST_SPEED = 26;
 const STOP_SPEED = 0.35;
@@ -220,6 +222,7 @@ export function createPlayer(scene) {
     stalled: false,
     pedalPhase: 0,
     parkSide: 1,
+    startX: START_X,
     handlingT: -1, // <0 inactive; else seconds into envelope
     onCall: false, // girlfriend call — forced slow
 
@@ -242,7 +245,7 @@ export function createPlayer(scene) {
     },
 
     reset() {
-      group.position.set(0, 0, 0);
+      group.position.set(START_X, 0, 0);
       group.rotation.set(0, 0, 0);
       body.rotation.set(0, 0, 0);
       body.position.set(0, 0, 0);
@@ -255,6 +258,7 @@ export function createPlayer(scene) {
       api.parkSide = 1;
       api.handlingT = -1;
       api.onCall = false;
+      api.startX = START_X;
       trail.material.opacity = 0;
       group.visible = true;
       rider.rotation.z = 0;

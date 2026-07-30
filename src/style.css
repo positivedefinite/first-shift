@@ -29,6 +29,20 @@ body {
   touch-action: none;
 }
 
+.version {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.55rem;
+  z-index: 20;
+  pointer-events: none;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  color: rgba(158, 182, 216, 0.38);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-weight: 500;
+  user-select: none;
+}
+
 #minimap-wrap {
   position: absolute;
   right: 1.1rem;
@@ -654,6 +668,14 @@ button:active {
 .hint {
   font-size: 0.75rem;
   opacity: 0.55;
+}
+
+.menu-version {
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  color: rgba(158, 182, 216, 0.55);
+  font-weight: 500;
 }
 
 .level-grid {
