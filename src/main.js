@@ -448,7 +448,7 @@ let bloomKick = 0;
 let hitTunnelT = 0;
 /**
  * Way Back arc (distance vs slipAt):
- * 0–28% calm · 28% one star · 48% weird · build stars/cruise/shake · slipAt flashbang → death
+ * 0–12% calm · 12% sparse stars · 48% weird · build stars/cruise/shake · slipAt flashbang → death
  */
 const STAR_LINES = [
   'what the fuck is that?!',
@@ -615,17 +615,17 @@ function updateSpanFate(dt) {
 
   const slipAt = level.slipAt ?? level.goal;
   const p = state.distance / slipAt;
-  const oneStarAt = slipAt * 0.28;
+  const oneStarAt = slipAt * 0.12;
   const omenAt = slipAt * 0.48;
 
-  // Stars escalate + creep closer over the whole late ride
-  if (p < 0.28) setMeteorTier(0);
+  // Stars escalate earlier — stay far/behind buildings (proximity = streak drama only)
+  if (p < 0.12) setMeteorTier(0);
   else if (!spanFate.omenStarted) setMeteorTier(1);
   else if (p < 0.72) setMeteorTier(2);
   else setMeteorTier(3);
 
-  const prox = p < 0.28 ? 0 : Math.max(0, Math.min(1, (p - 0.28) / 0.72));
-  world.setMeteorProximity?.(prox * prox); // ease-in — late stretch gets scary close
+  const prox = p < 0.12 ? 0 : Math.max(0, Math.min(1, (p - 0.12) / 0.88));
+  world.setMeteorProximity?.(prox * prox); // ease-in — brighter/longer, never in front of facades
 
   if (!spanFate.omenStarted && state.distance >= omenAt) {
     beginOmen();

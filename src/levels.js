@@ -1,5 +1,21 @@
-const UNLOCK_KEY = 'first-shift-unlocked';
-const BEST_PREFIX = 'first-shift-best-L';
+const UNLOCK_KEY = 'one-last-shift-unlocked';
+const BEST_PREFIX = 'one-last-shift-best-L';
+const LEGACY_UNLOCK = 'first-shift-unlocked';
+const LEGACY_BEST = 'first-shift-best-L';
+
+function migrateRideStorage() {
+  if (!localStorage.getItem(UNLOCK_KEY)) {
+    const legacy = localStorage.getItem(LEGACY_UNLOCK);
+    if (legacy) localStorage.setItem(UNLOCK_KEY, legacy);
+  }
+  for (let id = 1; id <= 5; id++) {
+    if (!localStorage.getItem(BEST_PREFIX + id)) {
+      const legacy = localStorage.getItem(LEGACY_BEST + id);
+      if (legacy) localStorage.setItem(BEST_PREFIX + id, legacy);
+    }
+  }
+}
+migrateRideStorage();
 
 /** @typedef {'suburb' | 'borough' | 'downtown' | 'oldtown' | 'wayback'} LevelMode */
 
@@ -350,7 +366,9 @@ export function setBest(id, dist) {
 /** Wipe unlocks + best distances. Keeps graphics prefs. */
 export function resetRideHistory() {
   localStorage.removeItem(UNLOCK_KEY);
+  localStorage.removeItem(LEGACY_UNLOCK);
   for (const lv of LEVELS) {
     localStorage.removeItem(BEST_PREFIX + lv.id);
+    localStorage.removeItem(LEGACY_BEST + lv.id);
   }
 }

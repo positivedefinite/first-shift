@@ -590,10 +590,11 @@ body {
 .brand {
   font-family: Syne, sans-serif;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
   color: var(--neon);
   text-shadow: 0 0 18px rgba(92, 255, 176, 0.45);
+  white-space: nowrap;
 }
 
 #levelTag {
@@ -857,8 +858,8 @@ body {
 h1 {
   font-family: Syne, sans-serif;
   font-weight: 800;
-  font-size: clamp(3rem, 10vw, 5.5rem);
-  letter-spacing: -0.03em;
+  font-size: clamp(2.2rem, 7.5vw, 4.2rem);
+  letter-spacing: -0.02em;
   line-height: 0.95;
   background: linear-gradient(180deg, #fff 20%, var(--neon));
   -webkit-background-clip: text;

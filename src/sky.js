@@ -107,23 +107,18 @@ export function createSky(scene) {
   const stars = makeStarField(1200);
   root.add(stars);
 
-  // Small pale moon — hint of warm, not blood-red
+  // Small moon — even rose disc, soft craters only
   function makeMoonTexture() {
     const c = document.createElement('canvas');
     c.width = 128;
     c.height = 128;
     const g = c.getContext('2d');
-    const grad = g.createRadialGradient(50, 46, 6, 64, 64, 62);
-    grad.addColorStop(0, '#f4f0e8');
-    grad.addColorStop(0.4, '#e4d8c8');
-    grad.addColorStop(0.75, '#c8b8a8');
-    grad.addColorStop(1, '#8a7868');
-    g.fillStyle = grad;
+    g.fillStyle = '#e8b8a4';
     g.beginPath();
     g.arc(64, 64, 62, 0, Math.PI * 2);
     g.fill();
-    // Soft craters
-    g.fillStyle = 'rgba(90, 80, 70, 0.28)';
+    // Soft craters — flat tone, no limb gradient
+    g.fillStyle = 'rgba(160, 90, 80, 0.28)';
     for (const [x, y, r] of [
       [44, 50, 9],
       [78, 58, 6],
@@ -135,15 +130,6 @@ export function createSky(scene) {
       g.arc(x, y, r, 0, Math.PI * 2);
       g.fill();
     }
-    // Soft terminator
-    const shade = g.createLinearGradient(18, 0, 112, 0);
-    shade.addColorStop(0, 'rgba(30, 28, 40, 0.4)');
-    shade.addColorStop(0.5, 'rgba(30, 28, 40, 0)');
-    shade.addColorStop(1, 'rgba(255, 245, 230, 0.1)');
-    g.fillStyle = shade;
-    g.beginPath();
-    g.arc(64, 64, 62, 0, Math.PI * 2);
-    g.fill();
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -165,14 +151,14 @@ export function createSky(scene) {
   moon.renderOrder = 2;
   root.add(moon);
 
-  // Big soft cool halo (the nicer one) — behind/around, not punching holes
+  // Soft warm halo — behind/around, not punching holes
   const moonHalo = new THREE.Mesh(
     new THREE.CircleGeometry(5.8, 32),
     new THREE.MeshBasicMaterial({
-      color: 0x8899cc,
+      color: 0xcc8899,
       fog: false,
       transparent: true,
-      opacity: 0.14,
+      opacity: 0.15,
       depthWrite: false,
       depthTest: true,
       blending: THREE.AdditiveBlending,
@@ -273,11 +259,13 @@ export function createSky(scene) {
     transparent: true,
     opacity: 0.9,
     depthWrite: false,
+    depthTest: true, // occluded by buildings — never draw over facades
     blending: THREE.AdditiveBlending,
     fog: false,
   });
   const meteorLines = new THREE.LineSegments(meteorGeo, meteorMat);
   meteorLines.visible = false;
+  meteorLines.renderOrder = -1;
   root.add(meteorLines);
 
   /** @type {{ x:number,y:number,z:number, vx:number,vy:number,vz:number, life:number, max:number, len:number }[]} */
@@ -291,26 +279,32 @@ export function createSky(scene) {
     return a + (b - a) * t;
   }
 
+  /** Keep streaks deep in the sky — never closer than far-city / moon plane */
+  const METEOR_Z_NEAR = -58;
+
   function spawnMeteor(cluster = false) {
     if (meteors.length >= METEOR_MAX) return;
     const near = meteorProximity;
-    const side = Math.random() > 0.28 ? -1 : 1; // bias left
-    // Far: high & distant. Near: low, close, almost in your face.
-    const xSpan = lerp(52, 9, near);
-    const x = side * (lerp(22, 5, near) + Math.random() * xSpan) + (cluster ? (Math.random() - 0.5) * lerp(20, 6, near) : 0);
-    const y = lerp(62, 11, near) + Math.random() * lerp(36, 10, near);
-    const z = lerp(-85, -8, near) - Math.random() * lerp(45, 10, near);
-    const speed = lerp(22, 48, near) + Math.random() * lerp(20, 40, near);
+    const side = Math.random() > 0.28 ? -1 : 1; // bias left (city side)
+    // Proximity = longer/brighter streaks, still always behind buildings
+    const xSpan = lerp(48, 28, near);
+    const x =
+      side * (lerp(24, 14, near) + Math.random() * xSpan) +
+      (cluster ? (Math.random() - 0.5) * lerp(18, 10, near) : 0);
+    const y = lerp(58, 28, near) + Math.random() * lerp(34, 18, near);
+    const z = METEOR_Z_NEAR - 8 - Math.random() * lerp(55, 35, near) - near * 12;
+    const speed = lerp(20, 38, near) + Math.random() * lerp(14, 28, near);
     meteors.push({
       x,
       y,
       z,
-      vx: -side * lerp(6, 18, near) + (Math.random() - 0.5) * 4,
+      vx: -side * lerp(5, 12, near) + (Math.random() - 0.5) * 3,
       vy: -speed * (0.55 + Math.random() * 0.35),
-      vz: lerp(4, 16, near) + Math.random() * 8,
-      life: lerp(1.1, 0.55, near) + Math.random() * 0.5,
+      // Drift deeper into sky — never toward the camera / bridge
+      vz: -1.5 - Math.random() * 4 - near * 2,
+      life: lerp(1.2, 0.7, near) + Math.random() * 0.45,
       max: 1,
-      len: lerp(2.0, 6.5, near) + Math.random() * lerp(1.5, 3, near),
+      len: lerp(2.0, 5.5, near) + Math.random() * lerp(1.2, 2.5, near),
     });
   }
 
@@ -324,17 +318,18 @@ export function createSky(scene) {
     meteorCooldown -= dt;
 
     if (meteorIntensity === 1) {
-      // Exactly one over the early stretch
-      if (!singleSpent && meteorCooldown <= 0) {
+      // Early stretch — sparse drizzle (not a single one-shot)
+      if (meteorCooldown <= 0) {
         spawnMeteor(false);
+        if (Math.random() < 0.3) spawnMeteor(false);
+        meteorCooldown = 1.8 + Math.random() * 2.4;
         singleSpent = true;
-        meteorCooldown = 99;
       }
     } else if (meteorIntensity === 2) {
       if (meteorCooldown <= 0) {
         spawnMeteor(false);
-        if (Math.random() < 0.35) spawnMeteor(false);
-        meteorCooldown = 1.4 + Math.random() * 1.8;
+        if (Math.random() < 0.45) spawnMeteor(false);
+        meteorCooldown = 1.0 + Math.random() * 1.4;
       }
     } else if (meteorIntensity >= 3) {
       if (meteorCooldown <= 0) {
@@ -351,7 +346,8 @@ export function createSky(scene) {
       m.x += m.vx * dt;
       m.y += m.vy * dt;
       m.z += m.vz * dt;
-      if (m.life <= 0 || m.y < 8) {
+      // Cull if they dip too low or somehow creep past the skyline plane
+      if (m.life <= 0 || m.y < 10 || m.z > METEOR_Z_NEAR) {
         meteors.splice(i, 1);
         continue;
       }
@@ -421,16 +417,16 @@ export function createSky(scene) {
         moon.material.opacity = 0.94;
         moon.scale.setScalar(1.05);
         moonHalo.scale.setScalar(1.35);
-        moonHalo.material.color.setHex(0x8899cc);
-        moonHalo.material.opacity = 0.16;
+        moonHalo.material.color.setHex(0xd47878);
+        moonHalo.material.opacity = 0.18;
         glow.material.opacity = 0.1;
         warmGlow.material.opacity = 0.12;
       } else {
         moon.material.opacity = 0.88;
         moon.scale.setScalar(0.85);
         moonHalo.scale.setScalar(1.1);
-        moonHalo.material.color.setHex(0x8899cc);
-        moonHalo.material.opacity = 0.12;
+        moonHalo.material.color.setHex(0xcc8899);
+        moonHalo.material.opacity = 0.14;
         glow.material.opacity = 0.18;
         warmGlow.material.opacity = 0.16;
         stars.material.opacity =

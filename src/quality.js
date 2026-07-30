@@ -3,7 +3,13 @@
  * Persisted. Affects DPR, bloom, rain, lamps, neon, towers, windows.
  */
 
-const KEY = 'first-shift-quality';
+const KEY = 'one-last-shift-quality';
+const LEGACY_KEY = 'first-shift-quality';
+
+if (!localStorage.getItem(KEY)) {
+  const legacy = localStorage.getItem(LEGACY_KEY);
+  if (legacy) localStorage.setItem(KEY, legacy);
+}
 
 /** @returns {'high' | 'low'} */
 export function getQuality() {

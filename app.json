@@ -1,8 +1,8 @@
 {
-  "name": "first-shift",
-  "description": "Rainy night bike delivery — browser game on three.js WebGPU",
+  "name": "one-last-shift",
+  "description": "ONE LAST SHIFT — rainy night bike delivery on three.js WebGPU",
   "repository": "https://github.com/positivedefinite/first-shift",
-  "keywords": ["game", "three.js", "webgpu", "vite"],
+  "keywords": ["game", "three.js", "webgpu", "vite", "one-last-shift"],
   "buildpacks": [{ "url": "heroku/nodejs" }],
   "env": {
     "NODE_ENV": { "value": "production" }
