@@ -1,7 +1,7 @@
 const UNLOCK_KEY = 'first-shift-unlocked';
 const BEST_PREFIX = 'first-shift-best-L';
 
-/** @typedef {'suburb' | 'borough' | 'center' | 'oldtown'} LevelMode */
+/** @typedef {'suburb' | 'borough' | 'downtown' | 'oldtown'} LevelMode */
 
 export const LEVELS = [
   {
@@ -68,7 +68,7 @@ export const LEVELS = [
     key: 'borough',
     name: 'BOROUGH',
     subtitle: 'Canal Reach',
-    blurb: 'Attached terraces. Warm sash windows. Corner shops lean in.',
+    blurb: 'Attached terraces. Mid-run: GF may call.',
     doorLabel: 'DOOR',
     debriefPhoto: '/debrief/debrief-borough.png',
     debriefReceiver: 'THE SHOPKEEP',
@@ -125,12 +125,12 @@ export const LEVELS = [
   },
   {
     id: 3,
-    key: 'center',
-    name: 'CENTER',
+    key: 'downtown',
+    name: 'DOWNTOWN',
     subtitle: 'Neon Mile',
-    blurb: 'Glass canyon. Mean clock. Punch the corporate door.',
+    blurb: 'Glass canyon. Mean clock. Mid-run: boss may call.',
     doorLabel: 'TOWER',
-    debriefPhoto: '/debrief/debrief-center.png',
+    debriefPhoto: '/debrief/debrief-downtown.png',
     debriefReceiver: 'THE CLIENT',
     debriefQuote:
       'Thank you. The building already knew your name. Please forget the lobby. It will not forget you.',
@@ -143,7 +143,7 @@ export const LEVELS = [
     pickupGap: [40, 30],
     musicBase: 0.5,
     theme: {
-      mode: 'center',
+      mode: 'downtown',
       brick: [0x1a2030, 0x121824, 0x202838, 0x181c28, 0x0e1420],
       neon: [0xff2d6a, 0x3de0ff, 0xb44dff, 0x5cffb0, 0xff0044, 0x00ffe0],
       neonChance: 0.95,
@@ -188,17 +188,18 @@ export const LEVELS = [
     key: 'oldtown',
     name: 'OLD TOWN',
     subtitle: 'Bell Lane',
-    blurb: 'Gothic stone. Pointed roofs. No room to breathe.',
+    blurb: 'Gothic stone. Mid-run: unknown number may call.',
     doorLabel: 'GATE',
     debriefPhoto: '/debrief/debrief-oldtown.png',
     debriefReceiver: 'THE WARDEN',
     debriefQuote:
       'The lane remembers every wheel. Leave the parcel at the gate. Do not answer if the bells ring your name.',
     goal: 980,
-    startTime: 52,
-    obstacleStart: 55,
-    obstacleGapEarly: [22, 14],
-    obstacleGapLate: [14, 10],
+    startTime: 48,
+    obstacleStart: 45,
+    // Densest traffic — after DOWNTOWN
+    obstacleGapEarly: [16, 12],
+    obstacleGapLate: [10, 8],
     pickupStart: 38,
     pickupGap: [34, 24],
     musicBase: 0.42,

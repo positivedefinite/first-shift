@@ -30,19 +30,44 @@
         <span id="best"></span>
       </div>
       <aside id="minimap-wrap" aria-label="Alley radar">
-        <canvas id="minimap" width="184" height="440"></canvas>
+        <div class="phone-shell">
+          <canvas id="minimap" width="184" height="440"></canvas>
+          <div id="phoneCall" class="phone-call hidden" aria-live="assertive">
+            <div id="callAvatar" class="call-avatar">GF</div>
+            <p id="callName" class="call-name">girlfriend</p>
+            <p id="callStatus" class="call-status">incoming call…</p>
+            <div id="callActions" class="call-actions">
+              <button type="button" id="callAccept" class="call-btn accept" title="Pick up">
+                <span>pick up</span>
+              </button>
+              <button type="button" id="callDismiss" class="call-btn dismiss" title="Dismiss">
+                <span>dismiss</span>
+              </button>
+            </div>
+          </div>
+          <div id="phoneText" class="phone-text hidden" aria-live="polite">
+            <p id="textFrom" class="text-from">GF</p>
+            <p id="textBody" class="text-body"></p>
+          </div>
+        </div>
+        <div class="speed-meter" aria-label="Speed">
+          <div class="speed-track"><i id="speedFill"></i></div>
+          <span id="speedLabel">SPD</span>
+        </div>
       </aside>
+      <div id="toast" class="toast" aria-live="polite"></div>
+      <div id="fx" class="fx" aria-hidden="true"></div>
     </div>
 
     <div id="overlay" class="panel">
       <p class="eyebrow">a rainy night run</p>
       <h1>FIRST SHIFT</h1>
-      <p class="lead">Suburbs → terraces → neon → old town.<br />Beat a level to unlock the next.</p>
+      <p class="lead">Suburbs → Borough → Downtown → Old Town.<br />Beat a level to unlock the next.</p>
 
       <div id="levelGrid" class="level-grid"></div>
 
       <button id="startBtn" type="button">PUNCH IN</button>
-      <p class="hint">hold W / ↑ to pedal · SPACE boost · M mute</p>
+      <p class="hint">1–4 pick level · hold W / ↑ to pedal · SPACE boost · M mute</p>
     </div>
 
     <div id="end" class="panel hidden">
@@ -63,8 +88,8 @@
       </div>
 
       <div class="end-actions">
-        <button id="retryBtn" type="button">TRY AGAIN</button>
-        <button id="nextBtn" type="button" class="ghost hidden">NEXT LEVEL</button>
+        <button id="nextBtn" type="button" class="hidden">NEXT LEVEL</button>
+        <button id="retryBtn" type="button" class="ghost">TRY AGAIN</button>
         <button id="mapBtn" type="button" class="ghost">MAP</button>
       </div>
     </div>

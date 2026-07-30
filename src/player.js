@@ -8,6 +8,11 @@ const COAST_DRAG = 7.5;
 const PEDAL_ACCEL = 8.5;
 const BOOST_ACCEL = 13;
 const ANGER_COUNT = 10;
+/** Good handling pickup: ramp +25% over 1s, ease back over 3s */
+const HANDLING_PEAK = 1.25;
+const HANDLING_RAMP = 1;
+const HANDLING_FALL = 3;
+const HANDLING_TOTAL = HANDLING_RAMP + HANDLING_FALL;
 
 export function createPlayer(scene) {
   const group = new THREE.Group();
@@ -210,14 +215,30 @@ export function createPlayer(scene) {
     vx: 0,
     boostEnergy: 1,
     hitCooldown: 0,
-    radius: 0.48,
+    // Tight vs visuals — fat circle made vans "hit" early
+    radius: 0.32,
     stalled: false,
     pedalPhase: 0,
     parkSide: 1,
+    handlingT: -1, // <0 inactive; else seconds into envelope
+    onCall: false, // girlfriend call — forced slow
 
     // world.js still reads this name for brief post-hit grace
     get invuln() {
       return api.hitCooldown;
+    },
+
+    /** Current speed multiplier from good-handling pickup */
+    handlingMult() {
+      if (api.handlingT < 0) return 1;
+      if (api.handlingT < HANDLING_RAMP) {
+        return 1 + (HANDLING_PEAK - 1) * (api.handlingT / HANDLING_RAMP);
+      }
+      if (api.handlingT < HANDLING_TOTAL) {
+        const u = (api.handlingT - HANDLING_RAMP) / HANDLING_FALL;
+        return HANDLING_PEAK + (1 - HANDLING_PEAK) * u;
+      }
+      return 1;
     },
 
     reset() {
@@ -232,18 +253,46 @@ export function createPlayer(scene) {
       api.stalled = false;
       api.pedalPhase = 0;
       api.parkSide = 1;
+      api.handlingT = -1;
+      api.onCall = false;
       trail.material.opacity = 0;
       group.visible = true;
+      rider.rotation.z = 0;
+      head.position.x = 0;
       for (const bit of angerBits) {
         bit.life = 0;
         bit.mesh.visible = false;
       }
     },
 
+    /** Start / refresh good-handling speed envelope */
+    goodHandling() {
+      api.handlingT = 0;
+    },
+
     punish() {
       api.speed *= 0.4;
       api.hitCooldown = 0.7; // grace only — no blink
       burstAnger();
+    },
+
+    /** Solid body contact — shove off a van without phasing through */
+    block(nx, amount = 1) {
+      // nx: push direction on X (−1 / +1), 0 = frontal wall
+      if (nx !== 0) {
+        group.position.x = THREE.MathUtils.clamp(
+          group.position.x + nx * amount,
+          -ROAD_HALF,
+          ROAD_HALF,
+        );
+        api.vx = nx * Math.max(3.5, Math.abs(api.vx));
+      }
+      // Can't push through — kill forward into the obstacle
+      api.speed = Math.min(api.speed, 3.2);
+    },
+
+    setX(x) {
+      group.position.x = THREE.MathUtils.clamp(x, -ROAD_HALF, ROAD_HALF);
     },
 
     update(dt, input) {
@@ -270,17 +319,27 @@ export function createPlayer(scene) {
         return { forward: 0, boosting: false, stalled: true };
       }
 
+      if (api.handlingT >= 0) {
+        api.handlingT += dt;
+        if (api.handlingT >= HANDLING_TOTAL) api.handlingT = -1;
+      }
+      const hMult = api.handlingMult();
+      const maxSpd = MAX_SPEED * hMult;
+      const boostSpd = BOOST_SPEED * hMult;
+      const pedalAcc = PEDAL_ACCEL * hMult;
+      const boostAcc = BOOST_ACCEL * hMult;
+
       const pedaling = input.throttle > 0;
       const braking = input.throttle < 0;
       const boosting = pedaling && input.boost && api.boostEnergy > 0.05;
 
       if (boosting) {
         api.boostEnergy = Math.max(0, api.boostEnergy - dt * 0.45);
-        api.speed = Math.min(BOOST_SPEED, api.speed + BOOST_ACCEL * dt);
+        api.speed = Math.min(boostSpd, api.speed + boostAcc * dt);
         trail.material.opacity = 0.55;
       } else if (pedaling) {
         api.boostEnergy = Math.min(1, api.boostEnergy + dt * 0.18);
-        api.speed = Math.min(MAX_SPEED, api.speed + PEDAL_ACCEL * dt);
+        api.speed = Math.min(maxSpd, api.speed + pedalAcc * dt);
         trail.material.opacity *= Math.exp(-4 * dt);
       } else if (braking) {
         api.speed = Math.max(0, api.speed + input.throttle * 28 * dt);
@@ -290,6 +349,18 @@ export function createPlayer(scene) {
         api.boostEnergy = Math.min(1, api.boostEnergy + dt * 0.22);
         api.speed = Math.max(0, api.speed - COAST_DRAG * dt);
         trail.material.opacity *= Math.exp(-6 * dt);
+      }
+
+      // While handling fades, ease speed down with the shrinking cap
+      if (api.handlingT >= HANDLING_RAMP && api.speed > maxSpd) {
+        api.speed = THREE.MathUtils.damp(api.speed, maxSpd, 5, dt);
+      }
+
+      // On the phone — one hand, wet road, bad idea
+      if (api.onCall) {
+        api.speed = Math.min(api.speed, 5.5);
+        api.speed = Math.max(0, api.speed - 4.5 * dt);
+        trail.material.opacity *= Math.exp(-8 * dt);
       }
 
       // Full stop → pull over
@@ -342,8 +413,21 @@ export function createPlayer(scene) {
       updateAnger(dt);
 
       headLight.intensity = boosting ? 14 : pedaling ? 9 : 5;
+      if (hMult > 1.02) {
+        accentMat.emissiveIntensity = 2.2 + (hMult - 1) * 8;
+        headLight.intensity += (hMult - 1) * 16;
+        trail.material.opacity = Math.max(trail.material.opacity, 0.25 + (hMult - 1) * 1.2);
+      } else {
+        accentMat.emissiveIntensity = 2.2;
+      }
 
-      return { forward: api.speed, boosting, stalled: false };
+      return {
+        forward: api.speed,
+        boosting,
+        stalled: false,
+        handling: hMult > 1.01,
+        handlingMult: hMult,
+      };
     },
   };
 

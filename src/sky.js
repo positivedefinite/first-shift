@@ -228,7 +228,7 @@ export function createSky(scene) {
       skyline.visible = theme.skylineDensity > 0.2;
       skyline.scale.set(1, 0.5 + theme.skylineDensity * 0.8, 1);
       stars.material.opacity =
-        theme.mode === 'suburb' ? 0.95 : theme.mode === 'center' ? 0.55 : theme.mode === 'oldtown' ? 0.7 : 0.85;
+        theme.mode === 'suburb' ? 0.95 : theme.mode === 'downtown' ? 0.55 : theme.mode === 'oldtown' ? 0.7 : 0.85;
     },
     update(t, origin) {
       root.position.x = origin.x * 0.1;

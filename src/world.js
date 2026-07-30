@@ -362,7 +362,7 @@ function buildGothicHouse(side, theme) {
   return g;
 }
 
-function buildCenterFacade(side, theme) {
+function buildDowntownFacade(side, theme) {
   const g = new THREE.Group();
   const stories =
     theme.storiesMin + Math.floor(Math.random() * (theme.storiesMax - theme.storiesMin + 1));
@@ -480,7 +480,7 @@ function buildFacade(side, theme) {
   if (theme.mode === 'suburb') return buildSuburbHouse(side, theme);
   if (theme.mode === 'borough') return buildTerraceHouse(side, theme);
   if (theme.mode === 'oldtown') return buildGothicHouse(side, theme);
-  return buildCenterFacade(side, theme);
+  return buildDowntownFacade(side, theme);
 }
 
 function buildGothicTower(side, theme) {
@@ -519,7 +519,7 @@ function buildBackTower(side, theme) {
 
   const g = new THREE.Group();
   const h =
-    theme.mode === 'center'
+    theme.mode === 'downtown'
       ? 22 + Math.random() * 36
       : theme.mode === 'suburb'
         ? 6 + Math.random() * 8
@@ -531,9 +531,9 @@ function buildBackTower(side, theme) {
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({
-      color: theme.mode === 'center' ? 0x0c1018 : 0x161a28,
+      color: theme.mode === 'downtown' ? 0x0c1018 : 0x161a28,
       roughness: 0.7,
-      metalness: theme.mode === 'center' ? 0.5 : 0.2,
+      metalness: theme.mode === 'downtown' ? 0.5 : 0.2,
     }),
   );
   body.position.y = h / 2;
@@ -542,7 +542,7 @@ function buildBackTower(side, theme) {
   const faceX = side * -(w / 2 + 0.02);
   const rows = Math.floor(h / 2.1);
   for (let r = 0; r < rows; r++) {
-    if (Math.random() > (theme.mode === 'center' ? 0.25 : 0.4)) continue;
+    if (Math.random() > (theme.mode === 'downtown' ? 0.25 : 0.4)) continue;
     const strip = new THREE.Mesh(
       new THREE.BoxGeometry(0.1, 0.22, d * 0.7),
       neonMat(pick(theme.neon), 1.1 + Math.random()),
@@ -558,7 +558,7 @@ function buildBackTower(side, theme) {
   tip.position.y = h + 0.1;
   g.add(tip);
 
-  if (theme.mode === 'center') {
+  if (theme.mode === 'downtown') {
     const ant = new THREE.Mesh(
       new THREE.CylinderGeometry(0.06, 0.06, 3.5, 4),
       neonMat(pick(theme.neon), 3),
@@ -691,7 +691,7 @@ export function createWorld(scene) {
 
     const light = new THREE.PointLight(
       theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
-      theme.mode === 'center' ? 7 : theme.mode === 'oldtown' ? 4.5 : 5.5,
+      theme.mode === 'downtown' ? 7 : theme.mode === 'oldtown' ? 4.5 : 5.5,
       15,
       2,
     );
@@ -852,10 +852,71 @@ export function createWorld(scene) {
   const vanMat = new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.5, metalness: 0.35 });
   const binGeo = new THREE.CylinderGeometry(0.45, 0.5, 1.1, 8);
   const binMat = new THREE.MeshStandardMaterial({ color: 0x343a48, roughness: 0.7 });
-  const coneGeo = new THREE.ConeGeometry(0.35, 0.9, 6);
-  const coneMat = neonMat(0xff6b4a, 1.2);
   const coffeeGeo = new THREE.CylinderGeometry(0.22, 0.28, 0.45, 10);
   const coffeeMat = neonMat(0xffb347, 2.8);
+
+  const coatColors = [0x1a2430, 0x2a2030, 0x1e2820, 0x302820, 0x222830, 0x3a2830, 0x243028];
+  const umbrellaColors = [0x1a3040, 0x301820, 0x202830, 0x1a2820, 0x402028];
+
+  function buildPasserby() {
+    const g = new THREE.Group();
+    const coat = pick(coatColors);
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.2, 0.5, 4, 6),
+      new THREE.MeshStandardMaterial({ color: coat, roughness: 0.88 }),
+    );
+    body.position.y = 0.95;
+    g.add(body);
+
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xc4a080, roughness: 0.7 }),
+    );
+    head.position.y = 1.52;
+    g.add(head);
+
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x12161c, roughness: 0.9 });
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.12), legMat);
+    const legR = legL.clone();
+    legL.position.set(-0.09, 0.22, 0);
+    legR.position.set(0.09, 0.22, 0);
+    g.add(legL, legR);
+
+    // Rain coat hood / hair blob
+    if (Math.random() > 0.55) {
+      const hood = new THREE.Mesh(
+        new THREE.SphereGeometry(0.17, 6, 6),
+        new THREE.MeshStandardMaterial({ color: coat, roughness: 0.9 }),
+      );
+      hood.position.set(0, 1.58, -0.02);
+      hood.scale.set(1, 0.85, 1.1);
+      g.add(hood);
+    }
+
+    if (Math.random() > 0.4) {
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.65, 4),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a20, metalness: 0.4, roughness: 0.5 }),
+      );
+      stem.position.set(0.26, 1.45, 0.05);
+      g.add(stem);
+      const canopy = new THREE.Mesh(
+        new THREE.ConeGeometry(0.42, 0.22, 8),
+        new THREE.MeshStandardMaterial({
+          color: pick(umbrellaColors),
+          roughness: 0.55,
+          metalness: 0.1,
+        }),
+      );
+      canopy.position.set(0.26, 1.82, 0.05);
+      canopy.rotation.x = Math.PI;
+      g.add(canopy);
+    }
+
+    g.userData.legs = [legL, legR];
+    g.userData.body = body;
+    return g;
+  }
 
   let nextObstacleAt = 40;
   let nextPickupAt = 55;
@@ -903,7 +964,7 @@ export function createWorld(scene) {
         if (Math.random() < theme.denseness) spawnBuilding(z, -1);
         if (Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.45, 1);
 
-        if (theme.mode === 'center') {
+        if (theme.mode === 'downtown') {
           if (i % 2 === 0 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.25, -1);
           if (i % 2 === 1 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.7, 1);
         } else if (theme.mode === 'suburb') {
@@ -928,20 +989,46 @@ export function createWorld(scene) {
     let mesh;
     let radius;
     let driveSpeed = 0; // world units/sec toward -z (same way as rider)
-    // Suburbs: more bins/cones, fewer vans
+    let strafeSpeed = 0; // cross-street walk (x)
+    let phase = 0;
+    // Suburbs: more walkers/bins, fewer vans
+    // Mix shifts by district; spawn *rate* comes from level.obstacleGap*
     const vanChance =
       theme.mode === 'suburb'
-        ? 0.25
-        : theme.mode === 'oldtown'
-          ? 0.2
-          : theme.mode === 'center'
-            ? 0.55
-            : 0.4;
+        ? 0.2
+        : theme.mode === 'borough'
+          ? 0.32
+          : theme.mode === 'downtown'
+            ? 0.48
+            : 0.28; // oldtown: denser overall, more walkers than vans
+    const walkerChance =
+      theme.mode === 'suburb'
+        ? 0.4
+        : theme.mode === 'borough'
+          ? 0.42
+          : theme.mode === 'downtown'
+            ? 0.38
+            : 0.58;
+
+    // hitShape: box uses halfX/halfZ (tighter than circle around long vans)
+    let hitShape = 'circle';
+    let halfX = 0;
+    let halfZ = 0;
+    let kind = 'bin';
+
     if (roll < vanChance) {
-      mesh = new THREE.Mesh(vanGeo, vanMat);
+      kind = 'van';
+      // Fresh material per van — flash on bump without tinting the shared mat
+      mesh = new THREE.Mesh(
+        vanGeo,
+        new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.5, metalness: 0.35 }),
+      );
       mesh.position.y = 0.85;
-      radius = 1.35;
-      // Crawl–cruise — always slower than a pedaling rider at pace
+      // Visual box 1.8 × 3.2 → collide slightly inside the mesh
+      hitShape = 'box';
+      halfX = 0.7;
+      halfZ = 1.25;
+      radius = 1.0; // fallback / radar
       driveSpeed = 4.5 + Math.random() * 7.5; // 4.5–12
       for (const sx of [-0.55, 0.55]) {
         const tl = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.08), neonMat(0xff1040, 2.8));
@@ -954,24 +1041,46 @@ export function createWorld(scene) {
         hl.position.set(sx, 0.15, -1.65);
         mesh.add(hl);
       }
-    } else if (roll < vanChance + 0.3) {
+      const lane = [-2.2, 0, 2.2][Math.floor(Math.random() * 3)];
+      mesh.position.x = Math.random() < 0.35 ? 0 : lane;
+    } else if (roll < vanChance + walkerChance) {
+      kind = 'walker';
+      mesh = buildPasserby();
+      radius = 0.34;
+      phase = Math.random() * Math.PI * 2;
+      // Mostly left → right; some reverse
+      const goRight = Math.random() > 0.22;
+      strafeSpeed = (goRight ? 1 : -1) * (1.6 + Math.random() * 1.4);
+      mesh.position.x = goRight ? -(ROAD_W / 2 + 1.4) : ROAD_W / 2 + 1.4;
+      // Face walk direction (default mesh faces -Z)
+      mesh.rotation.y = goRight ? -Math.PI / 2 : Math.PI / 2;
+    } else {
+      kind = 'bin';
       mesh = new THREE.Mesh(binGeo, binMat);
       mesh.position.y = 0.55;
-      radius = 0.7;
-    } else {
-      mesh = new THREE.Mesh(coneGeo, coneMat);
-      mesh.position.y = 0.45;
-      radius = 0.55;
+      hitShape = 'box';
+      halfX = 0.38;
+      halfZ = 0.38;
+      radius = 0.45;
+      const lane = [-2.2, 0, 2.2][Math.floor(Math.random() * 3)];
+      mesh.position.x = Math.random() < 0.4 ? lane : (Math.random() < 0.5 ? -2.1 : 2.1);
     }
 
-    const lane = [-2.2, 0, 2.2][Math.floor(Math.random() * 3)];
-    mesh.position.x = Math.random() < 0.35 ? 0 : lane;
-    if (Math.abs(mesh.position.x) < 0.1 && Math.random() < 0.5) {
-      mesh.position.x = Math.random() < 0.5 ? -2.1 : 2.1;
-    }
     mesh.position.z = z;
     props.add(mesh);
-    pool.obstacles.push({ mesh, radius, driveSpeed });
+    pool.obstacles.push({
+      mesh,
+      kind,
+      radius,
+      halfX,
+      halfZ,
+      hitShape,
+      driveSpeed,
+      strafeSpeed,
+      phase,
+      bumps: 0,
+      cool: 0,
+    });
   }
 
   function spawnPickup(z) {
@@ -1001,7 +1110,7 @@ export function createWorld(scene) {
     venue.material.color.setHex(
       theme.mode === 'suburb'
         ? 0x3a342e
-        : theme.mode === 'center'
+        : theme.mode === 'downtown'
           ? 0x101828
           : theme.mode === 'oldtown'
             ? 0x1a1612
@@ -1011,7 +1120,7 @@ export function createWorld(scene) {
       neonSignMat.color.setHex(0xffb347);
       neonSignMat.emissive.setHex(0xffb347);
       goalLight.color.setHex(0xffb347);
-    } else if (theme.mode === 'center') {
+    } else if (theme.mode === 'downtown') {
       neonSignMat.color.setHex(0xff2d6a);
       neonSignMat.emissive.setHex(0xff2d6a);
       goalLight.color.setHex(0xff2d6a);
@@ -1080,10 +1189,23 @@ export function createWorld(scene) {
       for (const b of pool.buildings) b.position.z += move;
       for (const t of pool.towers) t.position.z += move;
       for (const c of pool.clutter) c.position.z += move;
+      const t = time ?? performance.now() * 0.001;
       for (const o of pool.obstacles) {
         // Scroll with world, then drive forward (same direction as you)
         o.mesh.position.z += move;
         if (o.driveSpeed > 0) o.mesh.position.z -= o.driveSpeed * dt;
+        if (o.cool > 0) o.cool = Math.max(0, o.cool - dt);
+        if (o.strafeSpeed) {
+          o.mesh.position.x += o.strafeSpeed * dt;
+          // Walk cycle
+          const legs = o.mesh.userData.legs;
+          if (legs) {
+            const swing = Math.sin(t * 9 + o.phase) * 0.45;
+            legs[0].rotation.x = swing;
+            legs[1].rotation.x = -swing;
+            o.mesh.position.y = Math.abs(Math.sin(t * 9 + o.phase)) * 0.04;
+          }
+        }
       }
       for (const p of pool.pickups) p.mesh.position.z += move;
       for (const d of dashes) {
@@ -1123,48 +1245,128 @@ export function createWorld(scene) {
 
       if (distance > level.goal - 130) goal.visible = true;
 
-      const t = time ?? performance.now() * 0.001;
       for (const p of pool.pickups) {
         // Same angular speed for every cup — only start phase differs
         p.mesh.position.y = 0.9 + Math.sin(t * 2.4 + p.phase) * 0.15;
         p.mesh.rotation.y = t * 1.6 + p.phase;
       }
 
-      if (player.invuln > 0) return false;
-
-      const px = player.group.position.x;
-      const pz = player.group.position.z;
+      const pr = player.radius;
+      let crashEvent = null;
 
       for (let i = pool.obstacles.length - 1; i >= 0; i--) {
         const o = pool.obstacles[i];
-        // Passed you, or pulled too far ahead
-        if (o.mesh.position.z > 10 || o.mesh.position.z < -110) {
+        // Passed you, pulled too far ahead, or finished crossing
+        if (
+          o.mesh.position.z > 10 ||
+          o.mesh.position.z < -110 ||
+          (o.strafeSpeed && Math.abs(o.mesh.position.x) > ROAD_W / 2 + 3.5)
+        ) {
           props.remove(o.mesh);
           pool.obstacles.splice(i, 1);
           continue;
         }
-        const dx = o.mesh.position.x - px;
-        const dz = o.mesh.position.z - pz;
-        if (dx * dx + dz * dz < (o.radius + player.radius) ** 2 && o.mesh.position.z > -2.5) {
-          props.remove(o.mesh);
-          pool.obstacles.splice(i, 1);
-          return 'crash';
+
+        const px = player.group.position.x;
+        const pz = player.group.position.z;
+        let overlapping = false;
+
+        if (o.hitShape === 'box') {
+          overlapping =
+            Math.abs(o.mesh.position.x - px) < o.halfX + pr &&
+            Math.abs(o.mesh.position.z - pz) < o.halfZ + pr;
+        } else {
+          const dx = o.mesh.position.x - px;
+          const dz = o.mesh.position.z - pz;
+          const r = o.radius + pr;
+          overlapping = dx * dx + dz * dz < r * r;
+        }
+
+        if (!overlapping) continue;
+
+        // Solid vans: always resolve (even during cool / invuln) — no phase-through
+        if (o.kind === 'van') {
+          const ox = o.mesh.position.x;
+          const oz = o.mesh.position.z;
+          const penX = o.halfX + pr - Math.abs(px - ox);
+          const penZ = o.halfZ + pr - Math.abs(pz - oz);
+
+          if (penX > 0 && penZ > 0) {
+            if (penX < penZ) {
+              const nx = px >= ox ? 1 : -1;
+              player.setX(ox + nx * (o.halfX + pr + 0.04));
+              player.block(nx, 0);
+            } else {
+              if (oz <= 0) {
+                o.mesh.position.z = -(o.halfZ + pr + 0.06);
+              } else {
+                o.mesh.position.z = o.halfZ + pr + 0.06;
+              }
+              player.block(0);
+            }
+          }
+
+          if (o.cool <= 0 && player.invuln <= 0 && !crashEvent) {
+            o.bumps += 1;
+            o.cool = 1.15;
+            const mat = o.mesh.material;
+            if (mat && mat.emissive) {
+              mat.emissive.setHex(0xff2a20);
+              mat.emissiveIntensity = 0.85;
+              setTimeout(() => {
+                if (mat) {
+                  mat.emissive.setHex(0x000000);
+                  mat.emissiveIntensity = 0;
+                }
+              }, 180);
+            }
+            crashEvent = {
+              type: 'crash',
+              penalty: 3.5 + (o.bumps - 1) * 2.5,
+              bumps: o.bumps,
+              kind: o.kind,
+            };
+          }
+          continue;
+        }
+
+        // Walkers / bins — soft hit then clear
+        if (player.invuln > 0 || o.cool > 0) continue;
+        if (o.mesh.position.z <= -1.8 || o.mesh.position.z >= 1.4) continue;
+
+        o.bumps += 1;
+        props.remove(o.mesh);
+        pool.obstacles.splice(i, 1);
+        if (!crashEvent) {
+          crashEvent = {
+            type: 'crash',
+            penalty: 3.5 + (o.bumps - 1) * 2.5,
+            bumps: o.bumps,
+            kind: o.kind,
+          };
         }
       }
 
-      for (let i = pool.pickups.length - 1; i >= 0; i--) {
-        const p = pool.pickups[i];
-        if (p.mesh.position.z > 10) {
-          props.remove(p.mesh);
-          pool.pickups.splice(i, 1);
-          continue;
-        }
-        const dx = p.mesh.position.x - px;
-        const dz = p.mesh.position.z - pz;
-        if (dx * dx + dz * dz < (p.radius + player.radius) ** 2) {
-          props.remove(p.mesh);
-          pool.pickups.splice(i, 1);
-          return 'pickup';
+      if (crashEvent) return crashEvent;
+
+      {
+        const px = player.group.position.x;
+        const pz = player.group.position.z;
+        for (let i = pool.pickups.length - 1; i >= 0; i--) {
+          const p = pool.pickups[i];
+          if (p.mesh.position.z > 10) {
+            props.remove(p.mesh);
+            pool.pickups.splice(i, 1);
+            continue;
+          }
+          if (player.invuln > 0) continue;
+          const dx = p.mesh.position.x - px;
+          const dz = p.mesh.position.z - pz;
+          if (dx * dx + dz * dz < (p.radius + player.radius) ** 2) {
+            props.remove(p.mesh);
+            pool.pickups.splice(i, 1);
+            return 'pickup';
+          }
         }
       }
 

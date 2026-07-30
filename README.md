@@ -1,6 +1,6 @@
 # FIRST SHIFT
 
-Rainy night bike run. Suburbs → terraces → neon → old town.
+Rainy night bike run. Suburbs → Borough → Downtown → Old Town.
 
 Browser game on **three.js r185** — `WebGPURenderer` + TSL `RenderPipeline` bloom.
 
@@ -44,7 +44,7 @@ Start: `node server.js` via `Procfile` (`web`), binds `process.env.PORT`.
 | --- | --- | --- |
 | 1 | SUBURBS · Estate Lane | Low houses, trees, warm lights · 620m |
 | 2 | BOROUGH · Canal Reach | Attached terraces, corner shops · 850m |
-| 3 | CENTER · Neon Mile | Dense cyber canyon · 1100m |
+| 3 | DOWNTOWN · Neon Mile | Dense cyber canyon · 1100m |
 | 4 | OLD TOWN · Bell Lane | Gothic stone, packed lane · 980m |
 
 Beat a level to unlock the next. Saved in `localStorage`.
@@ -61,4 +61,4 @@ Beat a level to unlock the next. Saved in `localStorage`.
 | 1–4 | Pick level on map |
 | M | Mute |
 
-Coffee +4s. Hit vans −3.5s. Stall on curb if you stop pedaling.
+Handling pickup: brief speed surge (feel it — watch the speed meter). Hit vans −3.5s (+ more if you scrape again). Stall on curb if you stop pedaling.
