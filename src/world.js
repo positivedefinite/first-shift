@@ -426,29 +426,32 @@ function buildDowntownFacade(side, theme) {
     if (neonOk(theme)) {
       const sign = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.4 + Math.random() * 0.2, depthZ * (0.4 + Math.random() * 0.3)),
-        neonMat(neonColor, 3.4),
+        neonMat(neonColor, 2.2),
       );
       sign.position.set(faceX - side * 0.12, shopH + 0.3, 0);
       g.add(sign);
     }
   }
 
-  if (neonOk(theme)) {
+  // Vertical tube — rarer than other neon (big bloom contributor)
+  if (neonOk(theme) && Math.random() < 0.45) {
     const tube = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, h * 0.6, 0.1),
-      neonMat(pick(theme.neon), 2.8),
+      new THREE.BoxGeometry(0.1, h * 0.55, 0.1),
+      neonMat(pick(theme.neon), 1.8),
     );
     tube.position.set(faceX - side * 0.05, h * 0.5, -depthZ * 0.42);
     g.add(tube);
   }
 
-  // HIGH: all stories × 3 cols. LOW: cap panes for fill-rate.
+  // Cap lit panes — downtown was a fill-rate bomb
   const qWin = qualityPrefs();
   const litStories = Math.min(stories, qWin.maxLitStories);
   const cols = qWin.windowCols;
+  const litChance = qWin.windowLitChance ?? 0.5;
   for (let story = 1; story < litStories; story++) {
     const y = shopH + 0.95 + (story - 1) * storyH;
     for (let c = 0; c < cols; c++) {
+      if (Math.random() > litChance) continue;
       const z = (c - (cols - 1) / 2) * (depthZ * 0.32);
       const frame = new THREE.Mesh(
         new THREE.BoxGeometry(0.1, 1.2, 0.9),
@@ -702,7 +705,7 @@ export function createWorld(scene) {
       (theme.mode === 'wayback'
         ? 4
         : theme.mode === 'downtown'
-          ? 3
+          ? 5
           : theme.mode === 'oldtown'
             ? 3
             : theme.mode === 'borough'
@@ -711,18 +714,23 @@ export function createWorld(scene) {
     if (index % stride === 0) {
       const light = new THREE.PointLight(
         theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
-        theme.mode === 'downtown' ? 6.5 : theme.mode === 'oldtown' ? 5 : 5.5,
-        9.5,
+        theme.mode === 'downtown' ? 4.2 : theme.mode === 'oldtown' ? 5 : 5.5,
+        theme.mode === 'downtown' ? 7.5 : 9.5,
         2,
       );
       light.position.copy(bulb.position);
       g.add(light);
     }
 
-    if (theme.mode !== 'suburb' && theme.mode !== 'oldtown' && theme.mode !== 'borough') {
+    if (
+      theme.mode !== 'suburb' &&
+      theme.mode !== 'oldtown' &&
+      theme.mode !== 'borough' &&
+      Math.random() < 0.35
+    ) {
       const accent = new THREE.Mesh(
         new THREE.BoxGeometry(0.14, 0.14, 0.14),
-        neonMat(pick(theme.neon), 2.2),
+        neonMat(pick(theme.neon), 1.6),
       );
       accent.position.set(0, 2.4, 0);
       g.add(accent);
@@ -1155,8 +1163,10 @@ export function createWorld(scene) {
         if (Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.45, 1);
 
         if (theme.mode === 'downtown' && qualityPrefs().denseFacades) {
-          if (i % 2 === 0 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.25, -1);
-          if (i % 2 === 1 && Math.random() < theme.denseness) spawnBuilding(z - spacing * 0.7, 1);
+          // One extra facade every other segment — not both sides
+          if (i % 3 === 0 && Math.random() < theme.denseness * 0.7) {
+            spawnBuilding(z - spacing * 0.25, i % 2 === 0 ? -1 : 1);
+          }
         } else if (theme.mode === 'suburb') {
           if (i % 2 === 0) spawnHedge(z - 1, -1);
           if (i % 2 === 1) spawnHedge(z - 1.5, 1);
