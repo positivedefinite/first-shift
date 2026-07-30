@@ -397,7 +397,7 @@ export function createMusic() {
       }
     },
 
-    /** Phone talk — `normal` human-ish bla-bla or `weird` distorted (~4s) */
+    /** Phone talk — `normal` / `boss` bla-bla, or `weird` distorted (~4s) */
     startTalk(style = 'normal') {
       if (muted) return;
       ensure();
@@ -408,58 +408,75 @@ export function createMusic() {
         this._startTalkWeird();
         return;
       }
-      this._startTalkHuman();
+      this._startTalkHuman(style === 'boss' ? 'boss' : 'normal');
     },
 
-    /** Formant “bla bla bla” — glottal buzz + vowels + syllable gate */
-    _startTalkHuman() {
+    /**
+     * Formant “bla bla bla” — glottal + vowels + syllable gate.
+     * `boss` = deeper, slower, gruffer.
+     */
+    _startTalkHuman(kind = 'normal') {
       const t = ctx.currentTime;
-      const dur = 4.15;
+      const boss = kind === 'boss';
+      const dur = boss ? 4.4 : 4.15;
       const stoppers = [];
 
-      // Glottal source (female-ish phone voice)
       const glottal = ctx.createOscillator();
-      glottal.type = 'sawtooth';
-      glottal.frequency.setValueAtTime(205, t);
-      glottal.frequency.linearRampToValueAtTime(175, t + 0.9);
-      glottal.frequency.linearRampToValueAtTime(230, t + 1.8);
-      glottal.frequency.linearRampToValueAtTime(190, t + 2.7);
-      glottal.frequency.linearRampToValueAtTime(215, t + dur);
+      glottal.type = boss ? 'square' : 'sawtooth';
+      if (boss) {
+        // Male / barked orders
+        glottal.frequency.setValueAtTime(118, t);
+        glottal.frequency.linearRampToValueAtTime(95, t + 1.0);
+        glottal.frequency.linearRampToValueAtTime(130, t + 2.0);
+        glottal.frequency.linearRampToValueAtTime(105, t + 3.1);
+        glottal.frequency.linearRampToValueAtTime(122, t + dur);
+      } else {
+        // Female-ish phone voice
+        glottal.frequency.setValueAtTime(205, t);
+        glottal.frequency.linearRampToValueAtTime(175, t + 0.9);
+        glottal.frequency.linearRampToValueAtTime(230, t + 1.8);
+        glottal.frequency.linearRampToValueAtTime(190, t + 2.7);
+        glottal.frequency.linearRampToValueAtTime(215, t + dur);
+      }
 
       const vib = ctx.createOscillator();
       vib.type = 'sine';
-      vib.frequency.value = 5.8;
+      vib.frequency.value = boss ? 3.8 : 5.8;
       const vibG = ctx.createGain();
-      vibG.gain.value = 7;
+      vibG.gain.value = boss ? 4 : 7;
       vib.connect(vibG);
       vibG.connect(glottal.frequency);
 
-      // Two formants → vowel shape
       const f1 = ctx.createBiquadFilter();
       f1.type = 'bandpass';
-      f1.Q.value = 6;
-      f1.frequency.value = 650;
+      f1.Q.value = boss ? 4.5 : 6;
+      f1.frequency.value = boss ? 450 : 650;
       const f2 = ctx.createBiquadFilter();
       f2.type = 'bandpass';
-      f2.Q.value = 7;
-      f2.frequency.value = 1400;
+      f2.Q.value = boss ? 5 : 7;
+      f2.frequency.value = boss ? 900 : 1400;
+
+      // Duck score so talk dominates
+      if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.015, t, 0.08);
+      if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.012, t, 0.08);
+      if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.02, t, 0.1);
 
       const mix = ctx.createGain();
-      mix.gain.value = 0.55;
+      mix.gain.value = boss ? 1.35 : 1.15;
 
-      // Earpiece tin
       const phone = ctx.createBiquadFilter();
       phone.type = 'bandpass';
-      phone.frequency.value = 1600;
+      phone.frequency.value = boss ? 1200 : 1600;
       phone.Q.value = 0.85;
 
       const gate = ctx.createGain();
       gate.gain.value = 0.0001;
 
       const out = ctx.createGain();
+      const peakOut = boss ? 1.55 : 1.4;
       out.gain.setValueAtTime(0.0001, t);
-      out.gain.exponentialRampToValueAtTime(0.55, t + 0.06);
-      out.gain.setValueAtTime(0.55, t + dur - 0.25);
+      out.gain.exponentialRampToValueAtTime(peakOut, t + 0.06);
+      out.gain.setValueAtTime(peakOut, t + dur - 0.25);
       out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
       glottal.connect(f1);
@@ -471,46 +488,50 @@ export function createMusic() {
       phone.connect(out);
       out.connect(nodes.comp);
 
-      // Consonant clicks (the “b” in bla)
       const nLen = Math.floor(ctx.sampleRate * 0.04);
       const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
       const nData = nBuf.getChannelData(0);
       for (let i = 0; i < nLen; i++) nData[i] = (Math.random() * 2 - 1) * (1 - i / nLen);
 
-      // Vowels: ah / eh / oo / ih — cycle like chatter
-      const vowels = [
-        [700, 1100],
-        [500, 1700],
-        [400, 800],
-        [350, 2100],
-        [600, 1200],
-      ];
-      const syl = 0.16;
+      const vowels = boss
+        ? [
+            [450, 850],
+            [380, 700],
+            [500, 950],
+            [420, 1100],
+            [360, 780],
+          ]
+        : [
+            [700, 1100],
+            [500, 1700],
+            [400, 800],
+            [350, 2100],
+            [600, 1200],
+          ];
+      const syl = boss ? 0.22 : 0.16;
       let sylI = 0;
       for (let when = t + 0.05; when < t + dur - 0.2; when += syl) {
-        // Breath / pause every ~6 syllables
-        if (sylI % 7 === 6) {
+        if (sylI % (boss ? 5 : 7) === (boss ? 4 : 6)) {
           sylI += 1;
           continue;
         }
         const v = vowels[sylI % vowels.length];
-        f1.frequency.setValueAtTime(v[0] + (Math.random() - 0.5) * 40, when);
-        f2.frequency.setValueAtTime(v[1] + (Math.random() - 0.5) * 80, when);
+        f1.frequency.setValueAtTime(v[0] + (Math.random() - 0.5) * 30, when);
+        f2.frequency.setValueAtTime(v[1] + (Math.random() - 0.5) * 50, when);
 
-        const peak = 0.7 + Math.random() * 0.35;
-        const open = 0.07 + Math.random() * 0.05;
+        const peak = (boss ? 1.15 : 1.0) + Math.random() * 0.35;
+        const open = (boss ? 0.1 : 0.07) + Math.random() * 0.05;
         gate.gain.setValueAtTime(0.0001, when);
         gate.gain.exponentialRampToValueAtTime(peak, when + 0.018);
         gate.gain.exponentialRampToValueAtTime(0.0001, when + open);
 
-        // Plosive blip at syllable start
         const click = ctx.createBufferSource();
         click.buffer = nBuf;
         const cg = ctx.createGain();
-        cg.gain.value = 0.22;
+        cg.gain.value = boss ? 0.55 : 0.45;
         const hp = ctx.createBiquadFilter();
         hp.type = 'highpass';
-        hp.frequency.value = 900;
+        hp.frequency.value = boss ? 600 : 900;
         click.connect(hp);
         hp.connect(cg);
         cg.connect(phone);
@@ -590,10 +611,14 @@ export function createMusic() {
       delay.connect(fb);
       fb.connect(delay);
 
+      if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.015, t, 0.08);
+      if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.012, t, 0.08);
+      if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.02, t, 0.1);
+
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.28, t + 0.12);
-      g.gain.setValueAtTime(0.28, t + dur - 0.35);
+      g.gain.exponentialRampToValueAtTime(0.85, t + 0.12);
+      g.gain.setValueAtTime(0.85, t + dur - 0.35);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
       src.connect(bp);
@@ -609,10 +634,10 @@ export function createMusic() {
 
       // Detuned moan stack
       for (const [freq, type, vol] of [
-        [55, 'sawtooth', 0.06],
-        [82, 'sine', 0.05],
-        [110, 'triangle', 0.04],
-        [220.5, 'sawtooth', 0.025],
+        [55, 'sawtooth', 0.16],
+        [82, 'sine', 0.14],
+        [110, 'triangle', 0.12],
+        [220.5, 'sawtooth', 0.08],
       ]) {
         const o = ctx.createOscillator();
         o.type = type;
@@ -678,13 +703,21 @@ export function createMusic() {
     },
 
     stopTalk() {
-      if (!talkNodes) return;
-      try {
-        talkNodes.stop();
-      } catch {
-        /* already stopped */
+      if (talkNodes) {
+        try {
+          talkNodes.stop();
+        } catch {
+          /* already stopped */
+        }
+        talkNodes = null;
       }
-      talkNodes = null;
+      // Restore score after talk duck
+      if (ctx && nodes) {
+        const t = ctx.currentTime;
+        if (nodes.padGain) nodes.padGain.gain.setTargetAtTime(0.07, t, 0.12);
+        if (nodes.arpGain) nodes.arpGain.gain.setTargetAtTime(0.055, t, 0.12);
+        if (nodes.rainGain) nodes.rainGain.gain.setTargetAtTime(0.045, t, 0.15);
+      }
     },
 
     /** Angry text notification blip */

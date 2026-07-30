@@ -21,6 +21,7 @@ const els = {
   menuVersion: document.getElementById('menuVersion'),
   endVersion: document.getElementById('endVersion'),
   fps: document.getElementById('fps'),
+  tunnel: document.getElementById('tunnel'),
   overlay: document.getElementById('overlay'),
   end: document.getElementById('end'),
   endEyebrow: document.getElementById('endEyebrow'),
@@ -90,7 +91,7 @@ const CALLERS = {
     short: 'BOSS',
     name: 'your boss',
     statusWho: 'BOSS',
-    voice: 'normal',
+    voice: 'boss',
     texts: [
       'Answer next time. Clock is watching.',
       'That parcel pays your rent. Priorities.',
@@ -149,6 +150,7 @@ function resetCall() {
   player.onCall = false;
   music.stopRingtone();
   music.stopTalk();
+  els.tunnel?.classList.remove('on');
   els.minimapWrap?.classList.remove('phone-busy');
   els.phoneCall?.classList.add('hidden');
   els.phoneCall?.classList.remove('ringing', 'boss-call', 'unknown-call');
@@ -189,6 +191,7 @@ function acceptCall() {
     : 'on the phone — slow down';
   music.stopRingtone();
   music.startTalk(call.who?.voice || 'normal');
+  els.tunnel?.classList.add('on');
 }
 
 function dismissCall() {
@@ -223,6 +226,7 @@ function endCallUi() {
   player.onCall = false;
   music.stopTalk();
   music.stopRingtone();
+  els.tunnel?.classList.remove('on');
   els.minimapWrap.classList.remove('phone-busy');
   els.phoneCall.classList.add('hidden');
   els.phoneCall.classList.remove('ringing');

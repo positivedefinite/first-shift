@@ -1075,7 +1075,13 @@ export function createWorld(scene) {
       // Fresh material per van — flash on bump without tinting the shared mat
       mesh = new THREE.Mesh(
         vanGeo,
-        new THREE.MeshStandardMaterial({ color: 0x2a303c, roughness: 0.5, metalness: 0.35 }),
+        new THREE.MeshStandardMaterial({
+          color: 0x3a4454,
+          roughness: 0.48,
+          metalness: 0.32,
+          emissive: 0x1a2430,
+          emissiveIntensity: 0.22,
+        }),
       );
       mesh.position.y = 0.85;
       // Visual box 1.8 × 3.2 → collide slightly inside the mesh
@@ -1085,12 +1091,12 @@ export function createWorld(scene) {
       radius = 1.0; // fallback / radar
       driveSpeed = 4.5 + Math.random() * 7.5; // 4.5–12
       for (const sx of [-0.55, 0.55]) {
-        const tl = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.08), neonMat(0xff1040, 2.8));
+        const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.13, 0.08), neonMat(0xff2048, 3.6));
         tl.position.set(sx, 0.3, 1.65);
         mesh.add(tl);
         const hl = new THREE.Mesh(
-          new THREE.BoxGeometry(0.18, 0.1, 0.06),
-          neonMat(0xfff0c8, 2.2),
+          new THREE.BoxGeometry(0.2, 0.11, 0.06),
+          neonMat(0xfff5d0, 3.2),
         );
         hl.position.set(sx, 0.15, -1.65);
         mesh.add(hl);
@@ -1371,8 +1377,8 @@ export function createWorld(scene) {
               mat.emissiveIntensity = 0.85;
               setTimeout(() => {
                 if (mat) {
-                  mat.emissive.setHex(0x000000);
-                  mat.emissiveIntensity = 0;
+                  mat.emissive.setHex(0x1a2430);
+                  mat.emissiveIntensity = 0.22;
                 }
               }, 180);
             }
