@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>FIRST SHIFT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <div class="hud-top">
+        <div class="brand-wrap">
+          <div class="brand">FIRST SHIFT</div>
+          <div id="levelTag">L1 · SUBURBS</div>
+        </div>
+        <div class="meter">
+          <span id="clock">0:45</span>
+          <div class="bar"><i id="progress"></i></div>
+          <span id="dist">0m</span>
+        </div>
+      </div>
+      <div class="hud-bottom">
+        <span id="status">hold W to pedal · coast = stop</span>
+        <span id="best"></span>
+      </div>
+      <aside id="minimap-wrap" aria-label="Alley radar">
+        <canvas id="minimap" width="184" height="440"></canvas>
+      </aside>
+    </div>
+
+    <div id="overlay" class="panel">
+      <p class="eyebrow">a rainy night run</p>
+      <h1>FIRST SHIFT</h1>
+      <p class="lead">Suburbs → terraces → neon → old town.<br />Beat a level to unlock the next.</p>
+
+      <div id="levelGrid" class="level-grid"></div>
+
+      <button id="startBtn" type="button">PUNCH IN</button>
+      <p class="hint">hold W / ↑ to pedal · SPACE boost · M mute</p>
+    </div>
+
+    <div id="end" class="panel hidden">
+      <p class="eyebrow" id="endEyebrow">shift over</p>
+      <h1 id="endTitle">LATE</h1>
+      <p class="lead" id="endLead"></p>
+
+      <div id="debrief" class="debrief hidden">
+        <figure class="debrief-photo">
+          <img id="debriefImg" alt="Delivery still" />
+          <figcaption id="debriefStamp">DELIVERY · STILL</figcaption>
+        </figure>
+        <blockquote class="debrief-quote">
+          <p id="debriefLine"></p>
+          <cite id="debriefWho"></cite>
+        </blockquote>
+        <p class="debrief-meta" id="debriefMeta"></p>
+      </div>
+
+      <div class="end-actions">
+        <button id="retryBtn" type="button">TRY AGAIN</button>
+        <button id="nextBtn" type="button" class="ghost hidden">NEXT LEVEL</button>
+        <button id="mapBtn" type="button" class="ghost">MAP</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
