@@ -281,27 +281,29 @@ export function createSky(scene) {
 
   /** Keep streaks deep in the sky — never closer than far-city / moon plane */
   const METEOR_Z_NEAR = -58;
+  // Parallel shower — same angle for every streak (down + slightly left, into deep sky)
+  const METEOR_DIR_X = -0.32;
+  const METEOR_DIR_Y = -1;
+  const METEOR_DIR_Z = -0.12;
 
   function spawnMeteor(cluster = false) {
     if (meteors.length >= METEOR_MAX) return;
     const near = meteorProximity;
-    const side = Math.random() > 0.28 ? -1 : 1; // bias left (city side)
-    // Proximity = longer/brighter streaks, still always behind buildings
-    const xSpan = lerp(48, 28, near);
+    // Right sky only — city/buildings stay on the left
     const x =
-      side * (lerp(24, 14, near) + Math.random() * xSpan) +
-      (cluster ? (Math.random() - 0.5) * lerp(18, 10, near) : 0);
+      lerp(16, 12, near) +
+      Math.random() * lerp(42, 26, near) +
+      (cluster ? (Math.random() - 0.5) * 6 : 0);
     const y = lerp(58, 28, near) + Math.random() * lerp(34, 18, near);
     const z = METEOR_Z_NEAR - 8 - Math.random() * lerp(55, 35, near) - near * 12;
-    const speed = lerp(20, 38, near) + Math.random() * lerp(14, 28, near);
+    const speed = lerp(22, 40, near) * (0.9 + Math.random() * 0.2);
     meteors.push({
       x,
       y,
       z,
-      vx: -side * lerp(5, 12, near) + (Math.random() - 0.5) * 3,
-      vy: -speed * (0.55 + Math.random() * 0.35),
-      // Drift deeper into sky — never toward the camera / bridge
-      vz: -1.5 - Math.random() * 4 - near * 2,
+      vx: METEOR_DIR_X * speed,
+      vy: METEOR_DIR_Y * speed,
+      vz: METEOR_DIR_Z * speed,
       life: lerp(1.2, 0.7, near) + Math.random() * 0.45,
       max: 1,
       len: lerp(2.0, 5.5, near) + Math.random() * lerp(1.2, 2.5, near),
