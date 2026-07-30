@@ -19,6 +19,7 @@ const MIME = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.map': 'application/json',
@@ -32,7 +33,24 @@ function safeJoin(root, reqPath) {
   return full;
 }
 
-function send(res, status, body, type, extra = {}) {
+function parseRange(header, size) {
+  if (!header || !header.startsWith('bytes=')) return null;
+  const [startStr, endStr] = header.slice(6).split('-');
+  let start = startStr === '' ? NaN : Number(startStr);
+  let end = endStr === '' ? NaN : Number(endStr);
+  if (Number.isNaN(start)) {
+    // suffix: bytes=-N
+    if (Number.isNaN(end)) return null;
+    start = Math.max(0, size - end);
+    end = size - 1;
+  } else {
+    if (Number.isNaN(end) || end >= size) end = size - 1;
+  }
+  if (start < 0 || start >= size || end < start) return null;
+  return { start, end };
+}
+
+function send(res, status, body, type, extra = {}, method = 'GET') {
   const buf = Buffer.isBuffer(body) ? body : Buffer.from(body ?? '');
   // Content-Length required — WhatsApp OG crawler chokes on chunked bodies
   res.writeHead(status, {
@@ -44,33 +62,58 @@ function send(res, status, body, type, extra = {}) {
         : 'public, max-age=86400',
     ...extra,
   });
+  if (method === 'HEAD') {
+    res.end();
+    return;
+  }
   res.end(buf);
 }
 
-function sendFile(res, filePath) {
+function sendFile(res, filePath, req) {
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      send(res, 404, 'Not found');
+      send(res, 404, 'Not found', undefined, {}, req.method);
       return;
     }
     const ext = path.extname(filePath).toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
+    const isImage = ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp';
     const extra = {};
-    if (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.webp') {
-      extra['Cache-Control'] = 'public, max-age=604800';
+    if (isImage) {
+      extra['Cache-Control'] = 'public, max-age=604800, immutable';
       extra['Accept-Ranges'] = 'bytes';
     }
-    send(res, 200, data, type, extra);
+
+    const range = isImage ? parseRange(req.headers.range, data.length) : null;
+    if (range) {
+      const slice = data.subarray(range.start, range.end + 1);
+      res.writeHead(206, {
+        'Content-Type': type,
+        'Content-Length': slice.length,
+        'Content-Range': `bytes ${range.start}-${range.end}/${data.length}`,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': extra['Cache-Control'],
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(slice);
+      return;
+    }
+
+    send(res, 200, data, type, extra, req.method);
   });
 }
 
 const server = http.createServer((req, res) => {
   const raw = req.url || '/';
-  const urlPath = raw.split('?')[0] === '/' ? '/index.html' : raw;
+  const pathname = raw.split('?')[0] || '/';
+  const urlPath = pathname === '/' ? '/index.html' : pathname;
   let filePath = safeJoin(DIST, urlPath);
 
   if (!filePath) {
-    send(res, 403, 'Forbidden');
+    send(res, 403, 'Forbidden', undefined, {}, req.method);
     return;
   }
 
@@ -79,16 +122,16 @@ const server = http.createServer((req, res) => {
       filePath = path.join(filePath, 'index.html');
     }
     if (!err && (stat.isFile() || fs.existsSync(filePath))) {
-      sendFile(res, filePath);
+      sendFile(res, filePath, req);
       return;
     }
     // Missing hashed asset → 404. Unknown route → index (map deep links).
     const ext = path.extname(filePath);
     if (ext && ext !== '.html') {
-      send(res, 404, 'Not found');
+      send(res, 404, 'Not found', undefined, {}, req.method);
       return;
     }
-    sendFile(res, path.join(DIST, 'index.html'));
+    sendFile(res, path.join(DIST, 'index.html'), req);
   });
 });
 

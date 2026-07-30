@@ -359,7 +359,7 @@ function showAngryText() {
   music.textBlip();
 }
 
-/** Old Town — boss SMS at 75%, grants +15s */
+/** Old Town — boss SMS at 75%, grants +17s */
 function showBossTimeText() {
   els.textFrom.textContent = 'BOSS';
   els.textBody.textContent = "client called, there's still time!";
@@ -368,8 +368,8 @@ function showBossTimeText() {
   els.minimapWrap.classList.add('phone-busy');
   els.phoneText.classList.remove('hidden');
   els.phoneCall.classList.add('hidden');
-  els.status.textContent = 'new message — BOSS · +15s';
-  state.time += 15;
+  els.status.textContent = 'new message — BOSS · +17s';
+  state.time += 17;
   music.textBlip();
   pulseEvent('tip');
   // Reuse text phase so it auto-clears
@@ -1061,7 +1061,7 @@ function startLevel(id) {
   els.levelTag.textContent = `L${level.id} · ${level.name}`;
   els.status.textContent = level.finale
     ? 'clear sky · hold W · the city is behind you'
-    : 'hold W to pedal · coast = stop · M mute';
+    : 'hold W to pedal · coast = stop · M mute · ESC menu';
   els.clock.classList.remove('urgent');
   const best = getBest(level.id);
   els.best.textContent = best > 0 ? `best ${Math.floor(best)}m` : '';
@@ -1181,12 +1181,22 @@ addEventListener('keydown', (e) => {
       music.stopTalk();
     }
     if (state.mode === 'play') {
-      els.status.textContent = muted ? 'muted' : 'hold W to pedal · coast = stop · M mute';
+      els.status.textContent = muted
+        ? 'muted'
+        : 'hold W to pedal · coast = stop · M mute · ESC menu';
     }
   }
   if (state.mode === 'play' && call.phase === 'ring') {
     if (e.code === 'KeyY' || e.code === 'Enter') acceptCall();
-    if (e.code === 'KeyN' || e.code === 'Escape' || e.code === 'Backspace') dismissCall();
+    if (e.code === 'KeyN' || e.code === 'Backspace') dismissCall();
+  }
+  // ESC → district map (bail mid-run / leave end screen)
+  if (
+    e.code === 'Escape' &&
+    (state.mode === 'play' || state.mode === 'win' || state.mode === 'lose' || state.mode === 'slip')
+  ) {
+    e.preventDefault();
+    showMap();
   }
   if (
     state.mode === 'title' &&
