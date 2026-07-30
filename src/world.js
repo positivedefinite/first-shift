@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createSky } from './sky.js';
 import { LEVELS } from './levels.js';
 import { qualityPrefs } from './quality.js';
@@ -11,45 +12,96 @@ const SEGMENT = 24;
 const SEGMENTS = 14;
 const ROAD_W = 7.6;
 
+/** Shared materials — same look, far fewer GPU programs */
+const brickCache = new Map();
+const neonCache = new Map();
+const _invRoot = new THREE.Matrix4();
+const _localMat = new THREE.Matrix4();
+
 function brickMat(color) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.86,
-    metalness: 0.06,
-  });
+  const key = color >>> 0;
+  let m = brickCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.86,
+      metalness: 0.06,
+    });
+    brickCache.set(key, m);
+  }
+  return m;
 }
 
 function neonMat(color, intensity = 2.8) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: intensity,
-    roughness: 0.35,
-    metalness: 0.15,
-  });
+  const iq = Math.round(intensity * 4) / 4;
+  const key = `${color >>> 0}_${iq}`;
+  let m = neonCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: iq,
+      roughness: 0.35,
+      metalness: 0.15,
+    });
+    neonCache.set(key, m);
+  }
+  return m;
 }
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Lit pane mat, or null = skip mesh (no dark dead windows) */
 function windowLit(theme, warmBias = 0.7) {
-  const on = Math.random() > 0.22;
-  if (!on) {
-    return new THREE.MeshStandardMaterial({
-      color: 0x12151e,
-      roughness: 0.4,
-      metalness: 0.45,
-    });
-  }
+  if (Math.random() <= 0.22) return null;
   const warm = Math.random() < warmBias;
   const color = warm ? 0xffc978 : pick(theme.neon);
-  return new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: warm ? 0.85 + Math.random() * 1.2 : 1.4 + Math.random() * 1.6,
-    roughness: 0.35,
+  const intensity = warm ? 0.85 + Math.random() * 1.2 : 1.4 + Math.random() * 1.6;
+  return neonMat(color, intensity);
+}
+
+/** Merge meshes that share a material — fewer draw calls, same look */
+function compactMeshes(root) {
+  if (!root?.isObject3D) return root;
+  root.updateMatrixWorld(true);
+  _invRoot.copy(root.matrixWorld).invert();
+
+  /** @type {Map<string, { mat: THREE.Material, geos: THREE.BufferGeometry[] }>} */
+  const buckets = new Map();
+  const meshes = [];
+  root.traverse((obj) => {
+    if (obj.isMesh) meshes.push(obj);
   });
+  if (meshes.length < 3) return root;
+
+  for (const mesh of meshes) {
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    if (!mat) continue;
+    let b = buckets.get(mat.uuid);
+    if (!b) {
+      b = { mat, geos: [] };
+      buckets.set(mat.uuid, b);
+    }
+    const geo = mesh.geometry.clone();
+    _localMat.multiplyMatrices(_invRoot, mesh.matrixWorld);
+    geo.applyMatrix4(_localMat);
+    b.geos.push(geo);
+  }
+
+  while (root.children.length) root.remove(root.children[0]);
+
+  for (const { mat, geos } of buckets.values()) {
+    if (geos.length === 1) {
+      root.add(new THREE.Mesh(geos[0], mat));
+      continue;
+    }
+    const merged = mergeGeometries(geos, false);
+    for (const g of geos) g.dispose();
+    if (merged) root.add(new THREE.Mesh(merged, mat));
+  }
+  return root;
 }
 
 function buildSuburbHouse(side, theme) {
@@ -87,10 +139,9 @@ function buildSuburbHouse(side, theme) {
   for (let story = 0; story < stories; story++) {
     const y = 1.6 + story * 2.2;
     for (const z of [-depthZ * 0.22, depthZ * 0.22]) {
-      const pane = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.9, 0.7),
-        windowLit(theme, 0.9),
-      );
+      const lit = windowLit(theme, 0.9);
+      if (!lit) continue;
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.7), lit);
       pane.position.set(faceX - side * 0.04, y, z);
       g.add(pane);
     }
@@ -198,23 +249,15 @@ function buildTerraceHouse(side, theme) {
     }
   }
 
-  // Sash windows — warm, domestic
+  // Sash windows — warm, domestic (skip dark slots)
   for (let story = 0; story < stories; story++) {
     const y = 3.1 + story * storyH;
     for (const z of [-depthZ * 0.22, depthZ * 0.22]) {
-      const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 1.05, 0.72),
-        new THREE.MeshStandardMaterial({ color: 0x1a1814, roughness: 0.75 }),
-      );
-      frame.position.set(faceX, y, z);
-      g.add(frame);
-      const pane = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.88, 0.58),
-        windowLit(theme, 0.85),
-      );
+      const lit = windowLit(theme, 0.85);
+      if (!lit) continue;
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.88, 0.58), lit);
       pane.position.set(faceX - side * 0.04, y, z);
       g.add(pane);
-      // Sash bar
       const bar = new THREE.Mesh(
         new THREE.BoxGeometry(0.09, 0.06, 0.58),
         brickMat(0x141210),
@@ -323,22 +366,15 @@ function buildGothicHouse(side, theme) {
   archCap.position.set(faceX - side * 0.02, 2.65, 0);
   g.add(archCap);
 
-  // Tall lancet windows — candle amber
+  // Tall lancet windows — candle amber (skip dark slots)
   for (let story = 0; story < stories; story++) {
     const y = 3.4 + story * storyH;
     const cols = 1 + Math.floor(Math.random() * 2);
     for (let c = 0; c < cols; c++) {
+      const lit = windowLit(theme, 0.95);
+      if (!lit) continue;
       const z = (c - (cols - 1) / 2) * (depthZ * 0.28);
-      const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 1.45, 0.55),
-        brickMat(0x0e0c0a),
-      );
-      frame.position.set(faceX, y, z);
-      g.add(frame);
-      const pane = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 1.2, 0.4),
-        windowLit(theme, 0.95),
-      );
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.4), lit);
       pane.position.set(faceX - side * 0.04, y, z);
       g.add(pane);
       const peak = new THREE.Mesh(
@@ -443,7 +479,7 @@ function buildDowntownFacade(side, theme) {
     g.add(tube);
   }
 
-  // Cap lit panes — downtown was a fill-rate bomb
+  // Cap lit panes — pane only (no dark frames)
   const qWin = qualityPrefs();
   const litStories = Math.min(stories, qWin.maxLitStories);
   const cols = qWin.windowCols;
@@ -452,17 +488,10 @@ function buildDowntownFacade(side, theme) {
     const y = shopH + 0.95 + (story - 1) * storyH;
     for (let c = 0; c < cols; c++) {
       if (Math.random() > litChance) continue;
+      const lit = windowLit(theme, 0.35);
+      if (!lit) continue;
       const z = (c - (cols - 1) / 2) * (depthZ * 0.32);
-      const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 1.2, 0.9),
-        new THREE.MeshStandardMaterial({ color: 0x12151c, roughness: 0.65 }),
-      );
-      frame.position.set(faceX, y, z);
-      g.add(frame);
-      const pane = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 1.0, 0.72),
-        windowLit(theme, 0.35),
-      );
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.0, 0.72), lit);
       pane.position.set(faceX - side * 0.04, y, z);
       g.add(pane);
     }
@@ -590,6 +619,15 @@ export function createWorld(scene) {
   let level = LEVELS[0];
   let theme = level.theme;
   let recycleSpan = 34 * theme.buildingSpacing;
+  /** Hard cap — emissive bulbs fake the rest */
+  let pointLightCount = 0;
+
+  function tryPointLight(color, intensity, distance, decay = 2) {
+    const max = qualityPrefs().mode === 'high' ? 10 : 5;
+    if (pointLightCount >= max) return null;
+    pointLightCount += 1;
+    return new THREE.PointLight(color, intensity, distance, decay);
+  }
 
   // Wide earth under everything — suburbs had gaps that fell into void
   const groundMat = new THREE.MeshStandardMaterial({
@@ -712,14 +750,15 @@ export function createWorld(scene) {
               ? 3
               : 4) + qualityPrefs().lampStrideExtra;
     if (index % stride === 0) {
-      const light = new THREE.PointLight(
+      const light = tryPointLight(
         theme.mode === 'oldtown' ? 0xffa050 : 0xffc878,
         theme.mode === 'downtown' ? 4.2 : theme.mode === 'oldtown' ? 5 : 5.5,
         theme.mode === 'downtown' ? 7.5 : 9.5,
-        2,
       );
-      light.position.copy(bulb.position);
-      g.add(light);
+      if (light) {
+        light.position.copy(bulb.position);
+        g.add(light);
+      }
     }
 
     if (
@@ -758,9 +797,11 @@ export function createWorld(scene) {
     g.add(bulb);
     // Occasional tiny PointLight — short range, cheap
     if (Math.random() < qualityPrefs().sidewalkLightChance) {
-      const light = new THREE.PointLight(0xffa050, 2.0, 4.5, 2);
-      light.position.y = 0.78;
-      g.add(light);
+      const light = tryPointLight(0xffa050, 2.0, 4.5);
+      if (light) {
+        light.position.y = 0.78;
+        g.add(light);
+      }
     }
     g.position.set(side * (ROAD_W / 2 + 1.4), 0, z);
     props.add(g);
@@ -802,7 +843,7 @@ export function createWorld(scene) {
   }
 
   function spawnBuilding(z, side) {
-    const facade = buildFacade(side, theme);
+    const facade = compactMeshes(buildFacade(side, theme));
     const gap =
       theme.mode === 'suburb' ? 3.2 : theme.mode === 'oldtown' ? 1.55 : theme.mode === 'borough' ? 2.1 : 2.4;
     const x = side * (ROAD_W / 2 + gap + facade.userData.depthX * 0.5);
@@ -811,7 +852,7 @@ export function createWorld(scene) {
     pool.buildings.push(facade);
 
     if (Math.random() < theme.towerChance * qualityPrefs().towerMul) {
-      const tower = buildBackTower(side, theme);
+      const tower = compactMeshes(buildBackTower(side, theme));
       tower.position.set(
         side * (ROAD_W / 2 + (theme.mode === 'suburb' ? 10 : theme.mode === 'oldtown' ? 6 : 8) + Math.random() * 6),
         0,
@@ -1129,6 +1170,7 @@ export function createWorld(scene) {
     pool.buildings.length = 0;
     pool.towers.length = 0;
     pool.clutter.length = 0;
+    pointLightCount = 0;
   }
 
   function seedScenery() {

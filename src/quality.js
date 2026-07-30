@@ -32,7 +32,8 @@ export function qualityPrefs() {
   const high = getQuality() === 'high';
   return {
     mode: high ? 'high' : 'low',
-    dprCap: high ? 1.15 : 1.0,
+    antialias: high,
+    dprCap: high ? 1.1 : 1.0,
     rainCount: high ? 650 : 320,
     lampStrideExtra: high ? 1 : 3,
     sidewalkLightChance: high ? 0.22 : 0.08,
@@ -52,11 +53,8 @@ export function qualityPrefs() {
           Math.min(0.9, themeBloom[2] + 0.04),
         ];
       }
-      return [
-        themeBloom[0] * 0.55,
-        themeBloom[1] * 0.85,
-        Math.min(0.94, themeBloom[2] + 0.18),
-      ];
+      // LOW: bloom off — biggest cheap GPU win
+      return [0, themeBloom[1] * 0.85, 0.95];
     },
   };
 }

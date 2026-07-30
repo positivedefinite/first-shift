@@ -16,7 +16,7 @@ import {
   resetRideHistory,
 } from './levels.js';
 import { VERSION } from './version.js';
-import { toggleQuality, qualityPrefs, qualityLabel } from './quality.js';
+import { toggleQuality, qualityPrefs, qualityLabel, getQuality } from './quality.js';
 
 const els = {
   version: document.getElementById('version'),
@@ -907,7 +907,10 @@ const player = createPlayer(scene);
 const rain = createRain(scene);
 rain.setOpacity(level.theme.rainOpacity);
 
-const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: false });
+const renderer = new THREE.WebGPURenderer({
+  antialias: qualityPrefs().antialias,
+  alpha: false,
+});
 renderer.setPixelRatio(Math.min(devicePixelRatio, qualityPrefs().dprCap));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -934,6 +937,7 @@ function applyBloom(themeBloom) {
 
 function applyGraphicsQuality() {
   const q = qualityPrefs();
+  autoDprScale = 1;
   renderer.setPixelRatio(Math.min(devicePixelRatio, q.dprCap));
   rain.applyQuality();
   applyBloom(level.theme.bloom);
@@ -1321,6 +1325,8 @@ applyAtmosphere(level);
 let fpsFrames = 0;
 let fpsAcc = 0;
 let fpsSmooth = 60;
+/** Auto DPR scale on HIGH when FPS dips — resets toward 1 when healthy */
+let autoDprScale = 1;
 
 function updateFps(dt) {
   if (!els.fps || dt <= 0) return;
@@ -1335,6 +1341,16 @@ function updateFps(dt) {
   els.fps.textContent = `${n} FPS`;
   els.fps.classList.remove('bad', 'warn', 'ok');
   els.fps.classList.add(n < 10 ? 'bad' : n <= 30 ? 'warn' : 'ok');
+
+  // Minimal auto DPR — only while HIGH
+  if (getQuality() === 'high' && renderer) {
+    if (fpsSmooth < 42) autoDprScale = Math.max(0.75, autoDprScale - 0.05);
+    else if (fpsSmooth > 55) autoDprScale = Math.min(1, autoDprScale + 0.02);
+    const target = Math.min(devicePixelRatio, qualityPrefs().dprCap) * autoDprScale;
+    if (Math.abs(renderer.getPixelRatio() - target) > 0.04) {
+      renderer.setPixelRatio(target);
+    }
+  }
 }
 
 async function init() {
