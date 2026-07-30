@@ -690,7 +690,7 @@ function showFinale() {
   els.endTitle.textContent = 'THIS NIGHT';
   els.endLead.textContent = 'did not go as you planned.';
 
-  els.debriefImg.src = level.debriefPhoto;
+  els.debriefImg.src = `${level.debriefPhoto}?v=${VERSION}`;
   els.debriefImg.alt = 'Aftermath still';
   els.debriefStamp.textContent = `STILL · ${level.name} · ${Math.floor(score)}m`;
   els.debriefLine.textContent = `“${level.debriefQuote}”`;
@@ -1092,7 +1092,7 @@ function endRun(won) {
     els.endTitle.textContent = level.subtitle.toUpperCase();
     els.endLead.textContent = '';
 
-    els.debriefImg.src = level.debriefPhoto;
+    els.debriefImg.src = `${level.debriefPhoto}?v=${VERSION}`;
     els.debriefImg.alt = `Delivery still — ${level.subtitle}`;
     els.debriefStamp.textContent = `STILL · ${level.name} · ${Math.floor(score)}m`;
     els.debriefLine.textContent = `“${level.debriefQuote}”`;

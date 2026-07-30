@@ -91,6 +91,79 @@ export function createPlayer(scene) {
   head.position.set(0, 2.05, 0.02);
   body.add(head);
 
+  // Hand + phone — pops in beside the ear while on a call
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xe0b898, roughness: 0.7 });
+  const phoneShellMat = new THREE.MeshStandardMaterial({
+    color: 0x151820,
+    roughness: 0.35,
+    metalness: 0.55,
+  });
+  const phoneScreenMat = new THREE.MeshStandardMaterial({
+    color: 0x5cffb0,
+    emissive: 0x3dff9a,
+    emissiveIntensity: 2.4,
+    roughness: 0.25,
+  });
+  const phoneHand = new THREE.Group();
+  phoneHand.visible = false;
+  phoneHand.scale.setScalar(0);
+  body.add(phoneHand);
+
+  const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.14, 3, 6), skinMat);
+  forearm.position.set(-0.04, -0.1, 0.02);
+  forearm.rotation.z = -1.05;
+  forearm.rotation.x = 0.35;
+  phoneHand.add(forearm);
+
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.045), skinMat);
+  palm.position.set(0.05, 0.01, 0.05);
+  palm.rotation.set(0.2, 0.45, -0.35);
+  phoneHand.add(palm);
+
+  for (let f = 0; f < 3; f++) {
+    const finger = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.055, 0.02), skinMat);
+    finger.position.set(0.08 + f * 0.02, 0.05, 0.06 + f * 0.008);
+    finger.rotation.set(0.5, 0.2, -0.2);
+    phoneHand.add(finger);
+  }
+
+  const phoneMesh = new THREE.Group();
+  phoneMesh.position.set(0.09, 0.05, 0.1);
+  phoneMesh.rotation.set(0.25, 0.65, -0.2);
+  const phoneBody = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.018), phoneShellMat);
+  const phoneScreen = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.12, 0.006), phoneScreenMat);
+  phoneScreen.position.z = 0.012;
+  phoneMesh.add(phoneBody, phoneScreen);
+  phoneHand.add(phoneMesh);
+
+  let phoneBlend = 0;
+  let phonePhase = 0;
+
+  function syncPhoneHand(dt) {
+    const want = api.onCall && !api.tumbling && !api.lurching;
+    phoneBlend = THREE.MathUtils.damp(phoneBlend, want ? 1 : 0, want ? 18 : 14, dt);
+    if (phoneBlend < 0.02) {
+      phoneHand.visible = false;
+      phoneHand.scale.setScalar(0);
+      return;
+    }
+    phonePhase += dt;
+    phoneHand.visible = true;
+    phoneHand.scale.setScalar(phoneBlend);
+    // Right ear — slight talk bob
+    phoneHand.position.set(
+      0.28 + phoneBlend * 0.02,
+      2.02 + Math.sin(phonePhase * 3.2) * 0.014,
+      0.05 + Math.sin(phonePhase * 2.1) * 0.008,
+    );
+    phoneHand.rotation.set(
+      0.12 + Math.sin(phonePhase * 2.4) * 0.04,
+      0.5,
+      -0.4 + Math.sin(phonePhase * 1.8) * 0.05,
+    );
+    phoneScreenMat.emissiveIntensity = 1.8 + Math.sin(phonePhase * 6) * 0.5;
+  }
+
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.12, 0.2), accentMat);
   stripe.position.set(0, 1.55, -0.12);
   body.add(stripe);
@@ -286,6 +359,10 @@ export function createPlayer(scene) {
       group.position.y = 0;
       rider.rotation.z = 0;
       head.position.x = 0;
+      phoneBlend = 0;
+      phonePhase = 0;
+      phoneHand.visible = false;
+      phoneHand.scale.setScalar(0);
       for (const bit of angerBits) {
         bit.life = 0;
         bit.mesh.visible = false;
@@ -398,6 +475,7 @@ export function createPlayer(scene) {
         trail.material.opacity = 0.15;
         headLight.intensity = 4;
         updateAnger(dt);
+        syncPhoneHand(dt);
         return { forward: api.speed, boosting: false, stalled: false, lurching: true };
       }
 
@@ -413,6 +491,7 @@ export function createPlayer(scene) {
         trail.material.opacity = 0;
         headLight.intensity = 1.2;
         updateAnger(dt);
+        syncPhoneHand(dt);
         return { forward: 0, boosting: false, stalled: false, tumbling: true };
       }
 
@@ -427,6 +506,7 @@ export function createPlayer(scene) {
         headLight.intensity = 3;
 
         updateAnger(dt);
+        syncPhoneHand(dt);
 
         // Hold W to push off again
         if (input.throttle > 0.5) {
@@ -559,7 +639,8 @@ export function createPlayer(scene) {
       body.position.x = Math.sin(api.pedalPhase) * wobbleAmp * 0.2;
 
       rider.rotation.z = Math.sin(api.pedalPhase) * 0.05;
-      head.position.x = Math.sin(api.pedalPhase) * 0.015;
+      syncPhoneHand(dt);
+      head.position.x = Math.sin(api.pedalPhase) * 0.015 + phoneBlend * 0.05;
 
       const spin = api.speed * dt * 2.2;
       frontWheel.rotation.z -= spin;
